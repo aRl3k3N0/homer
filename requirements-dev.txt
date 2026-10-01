@@ -1,0 +1,25 @@
+# === Тесты ===
+pytest>=7.0
+pytest-cov>=4.0
+pytest-timeout>=2.0
+pytest-benchmark>=4.0
+
+# === Линтинг ===
+ruff>=0.5.0
+flake8>=6.0
+flake8-bugbear>=24.0
+flake8-comprehensions>=3.14
+
+# === Типизация ===
+mypy>=1.8
+types-PyYAML>=6.0
+types-requests>=2.31
+
+# === Документация ===
+Sphinx>=7.0
+sphinx-rtd-theme>=2.0
+myst-parser>=2.0
+
+# === Pre-commit ===
+pre-commit>=3.7
+pre-commit-hooks>=4.6

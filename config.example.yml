@@ -1,0 +1,184 @@
+app:
+  name: Homer
+  version: 1.0.0
+
+logging:
+  level: INFO
+  console: true
+  format: text      # text | json
+
+tracing:
+  enabled: false
+  service_name: homer
+  environment: production
+  exporter: otlp               # otlp | jaeger | zipkin | none
+  endpoint: "http://tempo:4317"  # OTLP gRPC
+  sample_ratio: 1.0
+  console: false
+  # Для Jaeger:
+  #exporter: jaeger
+  #jaeger_host: localhost
+  #jaeger_port: 6831
+
+databases:
+  oracle:
+    host: localhost
+    port: 1521
+    service: ORCL
+    user: cmdb
+    password: secret
+  postgres:
+    host: localhost
+    port: 5432
+    database: homer_db
+    user: postgres
+    password: secret
+
+mailer:
+  transport: mailx                  # smtp | mailx | sendmail | file
+  templates_dir: email
+  from: noreply@example.com
+  from_name: Homer Notifier
+  default_subject: Уведомление Homer
+
+  smtp:
+    host: smtp.example.com
+    port: 587
+    user: your_user
+    password: your_password
+    use_tls: true
+    use_ssl: false
+    timeout: 30
+
+  mailx:
+    binary: /usr/bin/mailx
+    from_arg: "-r"
+    extra_args: []
+    set_from_env: true
+
+  sendmail:
+    binary: /usr/sbin/sendmail
+    extra_args: ["-t", "-i"]
+
+  file:
+    dir: var/mail
+
+scheduler:
+  storage: sqlite                    # sqlite | postgres | oracle
+  interval: 30
+  lease_seconds: 300
+  heartbeat_interval: 30
+  max_workers: 4
+  execution_mode: threads            # threads | processes | subprocess
+  job_timeout_sec: 3600              # для subprocess-режима
+  cancel_children_on_fail: true
+
+  queue_defaults:
+    max_attempts: 3
+    retry_delay: 60
+
+  sqlite:
+    path: var/scheduler.db
+
+  # postgres:
+  #   host: localhost
+  #   port: 5432
+  #   database: homer_db
+  #   user: postgres
+  #   password: secret
+
+notifications:
+  enabled: [log, file, mattermost]     # log | file | email | desktop | telegram | slack | mattermost | rocketchat | discord | teams
+
+  log:
+    on: [failed, timeout, canceled]
+    level: warning
+
+  file:
+    path: var/notifications.jsonl
+
+  email:
+    on: [failed, timeout, canceled]
+    to: [ops@example.com]
+    from: noreply@example.com
+
+  desktop:
+    on: [failed, timeout]
+
+  telegram:
+    on: [failed, timeout, canceled]
+    bot_token: "123456:ABC..."
+    chat_ids:
+      - 123456789
+    parse_mode: HTML
+
+  slack:
+    on: [failed, timeout, canceled]
+    webhook_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+    channel: "#alerts"
+    username: Homer
+
+  mattermost:
+    on: [failed, timeout, canceled]
+    webhook_url: "https://mattermost.example.com/hooks/abc123"
+    channel: "town-square"
+    username: Homer
+    icon_emoji: ":robot_face:"
+    # icon_url: "https://example.com/homer.png"  # альтернатива emoji
+    color_ok:    "#2ecc71"
+    color_fail:  "#e74c3c"
+    color_warn:  "#f39c12"
+    mention_on_fail: "@channel"                # опционально
+
+  rocketchat:
+    on: [ failed, timeout, canceled ]
+    webhook_url: "https://chat.example.com/hooks/xxxx/yyyy"
+    channel: "#alerts"
+    alias: Homer
+    icon_emoji: ":robot:"
+    attachment_color: "#e74c3c"
+
+    discord:
+      on: [ failed, timeout, canceled ]
+      webhook_url: "https://discord.com/api/webhooks/xxx/yyy"
+      username: Homer
+      avatar_url: "https://example.com/homer.png"
+      mention_on_fail: "@here"
+
+    teams:
+      on: [ failed, timeout, canceled ]
+      webhook_url: "https://outlook.office.com/webhook/..."
+      theme_color: "0078D4"
+
+webui:
+    host: 127.0.0.1
+    port: 8080
+    log_level: info
+    auth:
+      user: admin
+      password: secret    # пусто = без авторизации
+    console:
+      enabled: true
+      allow_commands: [hello, db-report, report:daily]
+      deny_commands: []
+      max_session_seconds: 300
+    history:
+      enabled: true
+      max_output_chars: 200000     # обрезать длинный вывод
+      retention_days: 90           # сколько хранить (для авто-purge)
+
+plugins:
+  # Список включённых плагинов. "*" — включить все найденные.
+  enabled: ["*"]
+  # Или явно:
+  # enabled: [my_plugin, another_plugin]
+  # disabled: [experimental_plugin]
+
+  # Автоприменение миграций при старте Homer
+  auto_migrate: true
+
+i18n:
+  locale: ru
+  fallback: en
+  # Список доступных локалей для UI-селектора
+  available: [en, ru]

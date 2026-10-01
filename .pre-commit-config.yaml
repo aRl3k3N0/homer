@@ -1,0 +1,123 @@
+# Pre-commit конфигурация Homer.
+# Установка:  make pre-commit-install
+# Ручной прогон: make pre-commit-run
+# Обновление версий хуков: make pre-commit-update
+
+default_language_version:
+  python: python3.11
+
+default_stages: [pre-commit]
+fail_fast: false
+
+repos:
+  # ─────────── Базовые гигиенические хуки ───────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: ^(docs/api-generated/_build/|var/|logs/)
+      - id: end-of-file-fixer
+        exclude: ^(docs/api-generated/_build/|var/|logs/)
+      - id: mixed-line-ending
+        args: [--fix=lf]
+        exclude: ^(docs/api-generated/_build/|var/|logs/)
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^\.github/
+      - id: check-json
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: detect-private-key
+        exclude: ^tests/
+      - id: no-commit-to-branch
+        args: [--branch, main, --branch, master]
+
+  # ─────────── Ruff: линтер + автоформат ───────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        args: [--fix, --exit-non-zero-on-fix]
+        types_or: [python, pyi]
+        files: ^(lib|tests)/
+      - id: ruff-format
+        name: ruff (format)
+        types_or: [python, pyi]
+        files: ^(lib|tests)/
+
+  # ─────────── Flake8 (дополняет ruff) ───────────
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.1.0
+    hooks:
+      - id: flake8
+        name: flake8
+        additional_dependencies:
+          - flake8-bugbear
+          - flake8-comprehensions
+        files: ^(lib|tests)/
+
+  # ─────────── mypy: статическая типизация ───────────
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.0
+    hooks:
+      - id: mypy
+        name: mypy (lib)
+        args: [--config-file=mypy.ini]
+        files: ^lib/
+        exclude: ^lib/commands/
+        additional_dependencies:
+          - types-PyYAML
+          - types-requests
+          # Заглушки для необязательных внешних библиотек,
+          # чтобы mypy не пытался их установить:
+          # - psycopg2-binary
+          # - cx_Oracle
+
+  # ─────────── Проверка requirements ───────────
+  - repo: https://github.com/python-poetry/poetry
+    rev: 1.8.0
+    hooks:
+      - id: poetry-check
+        files: ^pyproject\.toml$
+        # Пропустите, если не используете Poetry — этот хук опционален.
+
+  # ─────────── Markdown ───────────
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.41.0
+    hooks:
+      - id: markdownlint
+        name: markdownlint
+        args: [--disable, MD013, MD033, MD041, --]
+        files: \.md$
+        exclude: ^(CHANGELOG\.md|docs/api-generated/_build/)
+
+  # ─────────── YAML ───────────
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        name: yamllint
+        args: [-c=.yamllint, --strict]
+        files: \.(ya?ml)$
+        exclude: ^(\.github/workflows/.*|docs/api-generated/_build/)
+
+  # ─────────── Shell ───────────
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        name: shellcheck
+        files: \.(sh|bash)$
+
+  # ─────────── Секреты ───────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        name: gitleaks (secret scan)

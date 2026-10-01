@@ -1,0 +1,27 @@
+services:
+  # ... tempo, grafana, prometheus ...
+
+  loki:
+    image: grafana/loki:3.1.0
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.1.0
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./promtail/config.yml:/etc/promtail/config.yml:ro
+      - ../../logs:/var/log/homer:ro
+      - promtail-positions:/tmp/positions
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+volumes:
+  tempo-data:
+  loki-data:
+  promtail-positions:

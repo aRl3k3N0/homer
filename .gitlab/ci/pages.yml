@@ -1,0 +1,22 @@
+# ─────────── GitLab Pages ───────────
+
+pages:
+  stage: pages
+  extends: .python-setup
+  script:
+    - |
+      python -m sphinx -b html docs/api-generated \
+        docs/api-generated/_build/html -W --keep-going
+    - mv docs/api-generated/_build/html public
+    - touch public/.nojekyll
+    # Копируем benchmark-графики, если были собраны
+    - |
+      if [ -d benchmarks-public ]; then
+        cp -r benchmarks-public/* public/benchmarks/ || true
+      fi
+  artifacts:
+    paths:
+      - public
+    expire_in: 30 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

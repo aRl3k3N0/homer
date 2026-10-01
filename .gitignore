@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Кэши инструментов
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Документация (сборка)
+docs/api-generated/_build/
+
+# Локальные данные
+config.yml
+!config.example.yml
+var/
+*.db
+*.sqlite3
+*.eml
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Тесты/секреты
+.env
+.env.*
+
+# Pre-commit
+.pre-commit-cache/
+
+# Coverage
+coverage.xml
+coverage.lcov
+
+.benchmarks/
+benchmark.json

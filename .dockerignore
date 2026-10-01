@@ -1,0 +1,44 @@
+# Git
+.git
+.gitignore
+.github
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+coverage.lcov
+.benchmarks/
+benchmark.json
+
+# Документация
+docs/api-generated/_build/
+site/
+
+# Локальные данные
+config.yml
+var/
+logs/
+*.db
+*.sqlite3
+*.eml
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Тесты и CI-артефакты
+tests/
+benchmarks/

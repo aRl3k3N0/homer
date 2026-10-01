@@ -1,0 +1,52 @@
+# ─────────── Линтинг ───────────
+
+ruff:
+  stage: lint
+  extends: .python-setup
+  script:
+    - python -m ruff check lib tests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^(feature|fix|hotfix)\/.*/
+
+flake8:
+  stage: lint
+  extends: .python-setup
+  script:
+    - python -m flake8 lib tests
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Pre-commit как единый чек
+pre-commit:
+  stage: lint
+  extends: .python-setup
+  cache:
+    key: pre-commit-$CI_COMMIT_REF_SLUG
+    paths:
+      - .cache/pre-commit/
+  variables:
+    PRE_COMMIT_HOME: "$CI_PROJECT_DIR/.cache/pre-commit"
+  script:
+    - python -m pre_commit run --all-files --show-diff-on-failure
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ─────────── Типизация ───────────
+
+mypy:
+  stage: typecheck
+  extends: .python-setup
+  script:
+    - python -m mypy lib
+  artifacts:
+    when: always
+    paths:
+      - .mypy_cache/
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

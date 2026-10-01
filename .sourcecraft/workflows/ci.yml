@@ -1,0 +1,155 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'feature/**'
+      - 'fix/**'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  lint:
+    name: Линтинг
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Установка зависимостей
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Ruff
+        run: python -m ruff check lib tests
+      - name: Flake8
+        run: python -m flake8 lib tests
+      - name: Pre-commit
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files --show-diff-on-failure
+
+  typecheck:
+    name: Типизация
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Установка
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: mypy
+        run: python -m mypy lib
+
+  test:
+    name: Тесты (${{ matrix.os }} / Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Установка
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: pytest
+        run: python -m pytest -q --maxfail=1 --timeout=60
+      - name: Покрытие
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        run: |
+          python -m pytest --cov=lib --cov-report=term-missing \
+            --cov-report=xml:coverage.xml --cov-fail-under=40
+      - name: Артефакт coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  docs:
+    name: Документация
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Установка
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Sphinx
+        run: |
+          python -m sphinx -b html docs/api-generated \
+            docs/api-generated/_build/html -W --keep-going
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-docs
+          path: docs/api-generated/_build/html
+
+  ci:
+    name: CI (итог)
+    needs: [lint, typecheck, test, docs]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Проверить, что все прошли
+        run: |
+          if [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.typecheck.result }}" != "success" ] || \
+             [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.docs.result }}" != "success" ]; then
+            exit 1
+          fi
+
+  pages:
+    name: Публикация на SourceCraft Pages
+    needs: [docs, ci]
+    if: |
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' ||
+       github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: api-docs
+          path: ./public
+      - name: .nojekyll
+        run: touch ./public/.nojekyll
+      # SourceCraft предоставляет свой action для Pages — уточните имя
+      # в их документации. Типовой вариант:
+      - name: Deploy to Pages
+        uses: sourcecraft/actions-pages@v1
+        with:
+          source_dir: ./public

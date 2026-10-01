@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Логи — Homer{% endblock %}
+{% block content %}
+
+<div class="row mb-3">
+  <div class="col-md-3">
+    <label class="form-label">Команда</label>
+    <select class="form-select" id="log-command">
+      {% for c in commands %}
+        <option value="{{ c }}" {% if c == selected_command %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-2">
+    <label class="form-label">Дата</label>
+    <input type="date" class="form-control" id="log-date"
+           value="{{ selected_date }}">
+  </div>
+  <div class="col-md-2">
+    <label class="form-label">Уровень</label>
+    <select class="form-select" id="log-level">
+      <option value="">Все</option>
+      {% for lvl in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] %}
+        <option value="{{ lvl }}" {% if lvl == selected_level %}selected{% endif %}>{{ lvl }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Поиск</label>
+    <input type="text" class="form-control" id="log-grep"
+           value="{{ grep }}" placeholder="подстрока">
+  </div>
+  <div class="col-md-2 d-flex align-items-end">
+    <button class="btn btn-primary me-2" id="log-reload">Обновить</button>
+    <button class="btn btn-success" id="log-follow">Follow</button>
+  </div>
+</div>
+
+
+<div class="col-md-2 d-flex align-items-end">
+  <div class="btn-group">
+    <button class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+      Скачать
+    </button>
+    <ul class="dropdown-menu">
+      <li><a class="dropdown-item log-download" data-format="log" href="#">.log</a></li>
+      <li><a class="dropdown-item log-download" data-format="json" href="#">.json</a></li>
+      <li><a class="dropdown-item log-download" data-format="jsonl" href="#">.jsonl</a></li>
+      <li><a class="dropdown-item log-download" data-format="csv" href="#">.csv</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li><a class="dropdown-item" id="log-download-bundle" href="#">Всё за дату (.zip)</a></li>
+    </ul>
+  </div>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <div class="text-muted small" id="log-status">—</div>
+  <div>
+    <span class="badge bg-secondary" id="log-count">0</span>
+  </div>
+</div>
+
+<pre id="log-view"
+     style="background:#1e1e1e;color:#d4d4d4;padding:1rem;max-height:70vh;
+            overflow:auto;font-size:0.85em;border-radius:6px;"></pre>
+
+<style>
+  .log-line { display: block; }
+  .log-DEBUG    { color: #808080; }
+  .log-INFO     { color: #d4d4d4; }
+  .log-WARNING  { color: #dcdcaa; }
+  .log-ERROR    { color: #f48771; }
+  .log-CRITICAL { color: #ff5370; font-weight: bold; }
+  .log-RAW      { color: #6a9955; }
+  .log-ts       { color: #569cd6; }
+</style>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const view = $('log-view');
+  const statusEl = $('log-status');
+  const countEl = $('log-count');
+
+  let ws = null;
+  let followMode = false;
+  let lineCount = 0;
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+  }
+
+  function appendLine(entry) {
+    const ts = entry.ts ? entry.ts.replace('T', ' ').slice(0, 19) : '';
+    const lvl = entry.level || 'INFO';
+    const html = `<span class="log-line log-${lvl}">` +
+      `<span class="log-ts">${escapeHtml(ts)}</span> ` +
+      `<b>[${escapeHtml(lvl)}]</b> ${escapeHtml(entry.message)}</span>`;
+    view.insertAdjacentHTML('beforeend', html);
+    lineCount++;
+    countEl.textContent = lineCount;
+
+    if (followMode) {
+      view.scrollTop = view.scrollHeight;
+    }
+  }
+
+  async function loadOnce() {
+    const command = $('log-command').value;
+    const date = $('log-date').value;
+    const level = $('log-level').value;
+    const grep = $('log-grep').value;
+
+    if (!command || !date) {
+      statusEl.textContent = 'Выберите команду и дату';
+      return;
+    }
+
+    const params = new URLSearchParams({command, date_: date, limit: 1000});
+    if (level) params.set('level', level);
+    if (grep) params.set('grep', grep);
+
+    statusEl.textContent = 'Загрузка…';
+    view.innerHTML = '';
+    lineCount = 0;
+
+    try {
+      const r = await fetch('/api/logs?' + params);
+      const entries = await r.json();
+      entries.forEach(appendLine);
+      statusEl.textContent = `Загружено ${entries.length} строк`;
+      view.scrollTop = view.scrollHeight;
+    } catch (e) {
+      statusEl.textContent = 'Ошибка: ' + e;
+    }
+  }
+
+  function startFollow() {
+    if (ws) return;
+    followMode = true;
+    const command = $('log-command').value;
+    const date = $('log-date').value;
+    if (!command) return;
+
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const params = new URLSearchParams(location.search);
+    const url = `${proto}//${location.host}/ws/logs?command=${encodeURIComponent(command)}&date_=${date}&${params}`;
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      statusEl.textContent = `Follow: ${command}`;
+      $('log-follow').classList.remove('btn-success');
+      $('log-follow').classList.add('btn-danger');
+      $('log-follow').textContent = 'Stop';
+    };
+    ws.onmessage = (ev) => {
+      const entry = JSON.parse(ev.data);
+      if (entry.error) { console.warn(entry.error); return; }
+      // Локальная фильтрация по grep/level
+      const lvl = $('log-level').value;
+      const grep = $('log-grep').value.toLowerCase();
+      if (lvl && entry.level !== lvl) return;
+      if (grep && !(entry.message || '').toLowerCase().includes(grep)) return;
+      appendLine(entry);
+    };
+    ws.onclose = () => {
+      followMode = false;
+      statusEl.textContent = 'Follow остановлен';
+    };
+  }
+
+  function stopFollow() {
+    if (ws) { ws.close(); ws = null; }
+    followMode = false;
+    $('log-follow').classList.remove('btn-danger');
+    $('log-follow').classList.add('btn-success');
+    $('log-follow').textContent = 'Follow';
+  }
+
+  $('log-reload').onclick = loadOnce;
+  $('log-follow').onclick = () => followMode ? stopFollow() : startFollow();
+  ['log-command', 'log-date', 'log-level', 'log-grep'].forEach(id => {
+    $(id).addEventListener('change', () => {
+      if (followMode) { stopFollow(); startFollow(); }
+      else loadOnce();
+    });
+  });
+
+  loadOnce();
+
+  function buildDownloadUrl(format) {
+  const command = $('log-command').value;
+  const date = $('log-date').value;
+  const level = $('log-level').value;
+  const grep = $('log-grep').value;
+  const p = new URLSearchParams({command, date_: date, format});
+  if (level) p.set('level', level);
+  if (grep) p.set('grep', grep);
+  return '/api/logs/download?' + p;
+}
+
+document.querySelectorAll('.log-download').forEach((el) => {
+  el.addEventListener('click', (e) => {
+    e.preventDefault();
+    const format = el.dataset.format;
+    window.location.href = buildDownloadUrl(format);
+  });
+});
+
+document.getElementById('log-download-bundle').addEventListener('click', (e) => {
+  e.preventDefault();
+  const command = $('log-command').value;
+  const date = $('log-date').value;
+  const p = new URLSearchParams({date_: date, format: 'log'});
+  if (command) p.set('command', command);
+  window.location.href = '/api/logs/bundle?' + p;
+});
+})();
+
+
+</script>
+
+{% endblock %}

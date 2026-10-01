@@ -1,0 +1,234 @@
+# ─────────────────────────────────────────────────────────────
+# Bamboo Specs (YAML) для Homer.
+# Требует Bamboo 9.2+.
+# Deployment: bamboo-specs/ → push → Bamboo сам подхватит
+# (либо "Scan for Bamboo Specs" в UI).
+# ─────────────────────────────────────────────────────────────
+
+version: 2
+
+plan:
+  project-key: HOMER
+  key: HOMER-CI
+  name: Homer CI
+
+# ─────────── Переменные плана ───────────
+variables:
+  python.version: "3.11"
+  docker.registry: "registry.example.com"
+  docker.image: "homer"
+  notification.provider: "mattermost"
+
+# ─────────── Триггеры ───────────
+triggers:
+  - remote:
+      description: "Внешний триггер"
+  - polling:
+      period: "3m"
+  - scheduled:
+      cron: "0 0 3 ? * *"        # ежедневно в 03:00 (только ветка main)
+
+# ─────────── Ветки ───────────
+branches:
+  create: for-pull-request    # авто-ветки для PR
+  delete: after-pull-request  # удалять после merge
+
+# ─────────── Репозиторий ───────────
+repositories:
+  - git:
+      url: "ssh://git@bitbucket.example.com/homer.git"
+      branch: "main"
+      shallow-clone: false
+      default: true
+
+# ─────────── Стадии и задачи ───────────
+
+stages:
+  # ── 1. Lint ──
+  - lint:
+      jobs:
+        - lint
+
+  # ── 2. Typecheck ──
+  - typecheck:
+      jobs:
+        - typecheck
+
+  # ── 3. Test ──
+  - test:
+      jobs:
+        - test-py311
+        - test-py39
+        - test-py310
+        - test-py312
+
+  # ── 4. Docs ──
+  - docs:
+      jobs:
+        - docs
+
+  # ── 5. Package ──
+  - package:
+      jobs:
+        - package
+
+  # ── 6. Docker ──
+  - docker:
+      jobs:
+        - docker-build
+
+  # ── 7. Release ──
+  - release:
+      jobs:
+        - release
+
+# ─────────── Задачи (jobs) ───────────
+
+lint:
+  tasks:
+    - checkout:
+        force-clean-build: true
+    - script:
+        interpreter: SHELL
+        scripts:
+          - |
+            set -e
+            chmod +x scripts/*.sh
+            ./scripts/lint.sh
+  requirements:
+    - default
+  artifact-subscriptions: []
+
+typecheck:
+  tasks:
+    - checkout
+    - script:
+        interpreter: SHELL
+        scripts: [ "./scripts/typecheck.sh" ]
+  requirements:
+    - default
+
+test-py311:
+  tasks:
+    - checkout
+    - script:
+        interpreter: SHELL
+        scripts:
+          - |
+            set -e
+            ./scripts/test.sh
+            COVERAGE=1 ./scripts/test.sh
+  requirements:
+    - default
+  artifacts:
+    - name: coverage
+      pattern: "coverage.xml"
+      location: "coverage.xml"
+      shared: false
+      required: false
+
+test-py39:
+  tasks:
+    - checkout
+    - script:
+        interpreter: SHELL
+        scripts: [ "PYTHON=python3.9 ./scripts/test.sh" ]
+  requirements:
+    - default
+
+test-py310:
+  tasks:
+    - checkout
+    - script:
+        interpreter: SHELL
+        scripts: [ "PYTHON=python3.10 ./scripts/test.sh" ]
+  requirements:
+    - default
+
+test-py312:
+  tasks:
+    - checkout
+    - script:
+        interpreter: SHELL
+        scripts: [ "PYTHON=python3.12 ./scripts/test.sh" ]
+  requirements:
+    - default
+
+docs:
+  tasks:
+    - checkout
+    - script:
+        interpreter: SHELL
+        scripts: [ "./scripts/docs.sh" ]
+  artifacts:
+    - name: api-docs
+      pattern: "docs/api-generated/_build/html/**"
+      location: "api-docs"
+      shared: true
+
+package:
+  tasks:
+    - checkout
+    - script:
+        interpreter: SHELL
+        scripts: [ "./scripts/package.sh" ]
+  artifacts:
+    - name: dist
+      pattern: "dist/**"
+      location: "dist"
+      shared: true
+
+docker-build:
+  tasks:
+    - checkout
+    - script:
+        interpreter: SHELL
+        scripts:
+          - |
+            set -e
+            if [ "$bamboo_planRepository_branchName" = "main" ]; then
+              PUSH=1 LOGIN=1 \
+                REGISTRY="$bamboo_docker_registry" \
+                IMAGE_OWNER="$bamboo_docker_owner" \
+                IMAGE="$bamboo_docker_image" \
+                REGISTRY_USER="$bamboo_docker_user" \
+                REGISTRY_TOKEN="$bamboo_docker_token" \
+                ./scripts/docker.sh
+            else
+              ./scripts/docker.sh
+            fi
+  requirements:
+    - docker
+
+release:
+  tasks:
+    - checkout:
+        force-clean-build: true
+    - script:
+        interpreter: SHELL
+        scripts:
+          - |
+            set -e
+            git config user.name "bamboo-ci"
+            git config user.email "bamboo-ci@example.com"
+            GH_TOKEN="$bamboo_github_token" ./scripts/release.sh
+  requirements:
+    - default
+  final-tasks:
+    - clean
+
+# ─────────── Общие требования ───────────
+
+requirements:
+  default:
+    - python3
+    - pip
+  docker:
+    - docker
+
+# ─────────── Уведомления ───────────
+
+notifications:
+  - type: hipchat
+    events: [ plan-failed, plan-success ]
+    # или любой доступный в Bamboo тип; см. UI Bamboo

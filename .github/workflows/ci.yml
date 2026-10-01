@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, 'feature/**', 'fix/**', 'hotfix/**']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  lint:
+    name: Линтинг
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11", cache: pip}
+      - name: Lint
+        run: ./scripts/lint.sh
+
+  typecheck:
+    name: Типизация
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11", cache: pip}
+      - name: Typecheck
+        run: ./scripts/typecheck.sh
+
+  test:
+    name: Тесты (${{ matrix.os }} / ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        include:
+          - {os: macos-latest, python-version: "3.12"}
+          - {os: windows-latest, python-version: "3.12"}
+    env:
+      PYTHON: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: ${{ matrix.python-version }}, cache: pip}
+      - name: Тесты
+        run: ./scripts/test.sh
+      - name: Покрытие
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        run: COVERAGE=1 ./scripts/test.sh
+      - name: Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11' && github.event_name == 'push'
+        uses: codecov/codecov-action@v4
+        with: {files: ./coverage.xml, flags: unittests, fail_ci_if_error: false}
+
+  docs:
+    name: Документация
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11", cache: pip}
+      - name: Sphinx
+        run: ./scripts/docs.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-docs
+          path: docs/api-generated/_build/html
+
+  ci:
+    name: CI (итог)
+    needs: [lint, typecheck, test, docs]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.typecheck.result }}" != "success" ] || \
+             [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.docs.result }}" != "success" ]; then
+            exit 1
+          fi
+
+  deploy-docs:
+    name: Публикация docs
+    needs: [docs, ci]
+    if: |
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    permissions: {contents: write}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: api-docs, path: ./public}
+      - run: touch ./public/.nojekyll
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./public
+          publish_branch: gh-pages
+
+  notify:
+    name: Уведомление
+    needs: [ci]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Notify
+        env:
+          PROVIDER: mattermost
+          STATUS: ${{ needs.ci.result == 'success' && 'success' || 'failed' }}
+          JOB_NAME: ${{ github.repository }} / ${{ github.ref_name }}
+          BUILD_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK }}
+        run: ./scripts/notify.sh

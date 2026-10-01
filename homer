@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""
+Homer - консольное приложение в стиле Laravel Artisan
+"""
+__version__ = "1.0.0"
+
+import sys
+from pathlib import Path
+from lib.plugins import get_manager
+from lib.command_loader import CommandLoader
+from lib.config import Config
+from lib.logger import Logger
+from lib.arguments import ArgumentParser
+from lib.tracing import setup_tracing, shutdown_tracing
+from lib.console import console, Color
+from lib.i18n import get_i18n
+from lib.i18n import t
+
+ROOT_DIR = Path(__file__).parent.absolute()
+sys.path.insert(0, str(ROOT_DIR))
+
+
+def build_context(config, logger, args, command_name, commands):
+    """
+    Собирает контекст команды.
+    `queue` — ленивый: соединение с БД очереди открывается только при
+    первом обращении к атрибуту.
+    """
+    from lib.queue import QueueStorage, Dispatcher
+
+    _storage = None
+    _dispatcher = None
+
+    class _LazyQueue:
+        def _get(self):
+            nonlocal _storage, _dispatcher
+            if _dispatcher is None:
+                _storage = QueueStorage(config)
+                _dispatcher = Dispatcher(
+                    _storage,
+                    config=config,
+                    triggered_by=f"cli:{command_name}",
+                )
+            return _dispatcher
+
+        def __getattr__(self, name):
+            return getattr(self._get(), name)
+
+    return {
+        'config': config,
+        'logger': logger,
+        'args': args,
+        'root_dir': ROOT_DIR,
+        'command_name': command_name,
+        'commands': commands,
+        'queue': _LazyQueue(),
+    }
+
+
+def main():
+    config = Config(ROOT_DIR / 'config.yml')
+    logger = Logger(config, ROOT_DIR / 'var/log')
+
+    setup_tracing(config)
+
+    # 1. Плагины: обнаружение и загрузка
+    plugin_mgr = get_manager()
+    plugin_mgr.discover(ROOT_DIR / 'plugins', config)
+    plugin_mgr.load_all({
+        'config': config,
+        'root_dir': ROOT_DIR,
+    })
+
+    i18n = get_i18n()
+    i18n.default_locale = config.get('i18n.locale', 'en')
+    i18n.fallback_locale = config.get('i18n.fallback', 'en')
+
+    # Глобальные переводы
+    i18n.load_dir(ROOT_DIR / 'langs')
+
+    # Переводы плагинов
+    for p in plugin_mgr.list():
+        if p.langs_dir:
+            i18n.load_dir(p.langs_dir)
+
+    # 2. Миграции плагинов (если auto_migrate)
+    if config.get('plugins.auto_migrate', True):
+        try:
+            from lib.db import connect
+            sched_cfg = config.get('scheduler', {}) or {}
+            driver = sched_cfg.get('storage', 'sqlite')
+            conn_cfg = sched_cfg.get(driver) or config.get(f'databases.{driver}')
+            if driver == 'sqlite':
+                if not conn_cfg:
+                    conn_cfg = {'path': 'var/scheduler.db'}
+                elif 'path' not in conn_cfg:
+                    conn_cfg = dict(conn_cfg, path='var/scheduler.db')
+            db = connect(driver, conn_cfg)
+            result = plugin_mgr.run_migrations(driver, db)
+            for a in result['applied']:
+                # тихо или через logger
+                pass
+            db.close()
+        except Exception as e:
+            # не падаем из-за миграций
+            import logging
+            logging.getLogger('homer.plugins').warning(f"auto-migrate: {e}")
+
+    parser = ArgumentParser()
+    parser.parse(sys.argv[1:])
+
+    loader = CommandLoader(ROOT_DIR / 'commands')
+    for plugin_dir in plugin_mgr.paths_for('commands'):
+        plugin_name = plugin_dir.parent.name
+        loader.add_plugin_commands(plugin_name, plugin_dir)
+    commands = loader.load_commands()
+
+    from lib.commands import BUILTIN_COMMANDS
+    for name, info in BUILTIN_COMMANDS.items():
+        commands.setdefault(name, info)
+
+    if not parser.command or parser.command in ['help', 'list', '--help', '-h']:
+        show_commands_list(commands)
+        return 0
+
+    if parser.command not in commands:
+        console.error(f"The command '{parser.command}' was not found.!")
+        console.comment("Use ‘homer’ to view available commands.")
+        return 1
+
+    command_info = commands[parser.command]
+
+    try:
+        logger.info(f"Running the command: {parser.command}", command=parser.command)
+        logger.info(f"Arguments: {parser.options}", command=parser.command)
+
+        context = build_context(
+            config=config,
+            logger=logger,
+            args=parser.options,
+            command_name=parser.command,
+            commands=commands,
+        )
+
+        try:
+            result = command_info['execute'](context)
+            logger.info(f"The command is completed with code: {result}", command=parser.command)
+            return result if isinstance(result, int) else 0
+        finally:
+            shutdown_tracing()
+
+    except KeyboardInterrupt:
+        logger.warning("Interrupted by the user", command=parser.command)
+        console.newline()
+        return 130
+    except Exception as e:
+        logger.error(f"Command execution error: {e}",
+                     command=parser.command, exc_info=True)
+        console.error(f"Error: {e}")
+        return 1
+
+
+def show_commands_list(commands):
+    console.banner("HOMER", "Console application", color=Color.BRIGHT_CYAN)
+
+    console.info(f"Version: {__version__}")
+
+    if not commands:
+        console.warning("There are no available commands.")
+        return
+
+    console.section("Available commands")
+
+    grouped = {}
+    for name, info in sorted(commands.items()):
+        namespace = name.split(':')[0] if ':' in name else 'general'
+        grouped.setdefault(namespace, []).append((name, info))
+
+    for namespace, cmds in sorted(grouped.items()):
+        if namespace != 'general':
+            print(console.colored(f"  {namespace}",
+                                  Color.BOLD + Color.BRIGHT_MAGENTA))
+        for name, info in cmds:
+            desc = info.get('description', 'No description')
+            src = info.get('source', 'user')
+            marker = '' if src == 'user' else console.dim(' [builtin]')
+            print(f"    {console.colored(name.ljust(30), Color.BRIGHT_YELLOW)} "
+                  f"{console.dim(desc)}{marker}")
+        print()
+
+    console.line()
+    console.comment("  Using: homer <command> [--param=value ...]")
+    console.line()
+    print()
+
+
+if __name__ == '__main__':
+    sys.exit(main())

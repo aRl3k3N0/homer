@@ -1,0 +1,22 @@
+[flake8]
+# Совместим с ruff; оставляем flake8 для случаев, где нужны специфичные плагины.
+max-line-length = 100
+extend-ignore =
+    E203,   # whitespace before ':' (конфликт с formatter)
+    W503,   # line break before binary operator (устаревшее)
+    E501,   # line too long — покрывается formatter-ом
+exclude =
+    .git,
+    __pycache__,
+    .venv,
+    venv,
+    build,
+    dist,
+    docs/api-generated/_build,
+    var,
+    logs,
+    commands,
+    examples,
+per-file-ignores =
+    tests/*:E402
+    lib/commands/*:E402

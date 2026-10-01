@@ -1,0 +1,121 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)",
+    ":separateMultipleMajorReleases",
+    ":automergePatch",
+    ":automergeMinor",
+    ":automergeDigest"
+  ],
+  "timezone": "Europe/Moscow",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "assignees": ["<user>"],
+  "reviewers": ["<user>"],
+  "rangeStrategy": "bump",
+  "rebaseWhen": "behind-base-branch",
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 3,
+  "branchPrefix": "renovate/",
+  "commitMessagePrefix": "chore(deps):",
+  "commitMessageAction": "update",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "to {{newVersion}}",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on the first day of the month"]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "assignees": ["<user>"]
+  },
+  "packageRules": [
+    {
+      "description": "Группировать pytest-пакеты",
+      "matchPackagePatterns": ["^pytest"],
+      "groupName": "pytest",
+      "groupSlug": "pytest"
+    },
+    {
+      "description": "Группировать линтеры",
+      "matchPackageNames": ["ruff", "flake8", "mypy"],
+      "matchPackagePatterns": ["^flake8-"],
+      "groupName": "linting",
+      "groupSlug": "linting"
+    },
+    {
+      "description": "Группировать документацию",
+      "matchPackagePatterns": ["^[Ss]phinx", "^sphinx-", "^myst-"],
+      "groupName": "docs",
+      "groupSlug": "docs"
+    },
+    {
+      "description": "Группировать драйверы БД",
+      "matchPackagePatterns": ["^psycopg2", "^cx_Oracle", "^pymysql"],
+      "groupName": "db-drivers",
+      "groupSlug": "db-drivers",
+      "automerge": false
+    },
+    {
+      "description": "Мейджоры — вручную, без авто-merge",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "major"]
+    },
+    {
+      "description": "Патчи и минор — авто-merge, если CI зелёный",
+      "matchUpdateTypes": ["patch", "minor", "digest"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    },
+    {
+      "description": "GitHub Actions — авто-merge",
+      "matchManagers": ["github-actions"],
+      "automerge": true,
+      "labels": ["dependencies", "ci"]
+    },
+    {
+      "description": "Docker base image — минор авто, мейджер — вручную",
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "Ограничить Python-версию 3.9+",
+      "matchManagers": ["pip_requirements", "pip_setup", "pyproject"],
+      "constraintsFiltering": "strict"
+    }
+  ],
+  "regexManagers": [
+    {
+      "description": "Обновлять Python-версии в CI (matrix)",
+      "fileMatch": ["^\\.github/workflows/.*\\.ya?ml$", "^\\.gitlab-ci\\.yml$", "^Jenkinsfile$", "^bamboo-specs/.*\\.ya?ml$"],
+      "matchStrings": ["[\"']?(?<currentValue>3\\.\\d+)[\"']?\\s*,?\\s*$"],
+      "datasourceTemplate": "python-version",
+      "depNameTemplate": "python"
+    }
+  ],
+  "ignoreDeps": [],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/.venv/**",
+    "docs/api-generated/_build/**",
+    "examples/**",
+    "**/tests/fixtures/**"
+  ],
+  "gitAuthor": "Renovate Bot <renovate@example.com>",
+  "onboarding": true,
+  "onboardingConfig": {
+    "extends": ["config:recommended"]
+  },
+  "platform": "github",
+  "forkProcessing": "enabled",
+  "ignorePresets": [],
+  "customManagers": [],
+  "hostRules": []
+}

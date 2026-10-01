@@ -1,0 +1,6 @@
+notes:
+  errors:
+    title_required: "Please specify --title=<title>"
+  created: "Note '{title}' created"
+  list:
+    title: "Notes"

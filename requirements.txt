@@ -1,0 +1,27 @@
+# БД
+pymysql>=1.1            # MySQL/MariaDB
+pyodbc>=5.1             # MS SQL
+clickhouse-driver>=0.2  # ClickHouse native
+clickhouse-connect>=0.7 # ClickHouse HTTP (альтернатива)
+redis>=5.0              # Redis
+pymongo>=4.6            # MongoDB
+
+# Web UI + Swagger
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+
+# Tracing
+opentelemetry-api>=1.25
+opentelemetry-sdk>=1.25
+opentelemetry-exporter-otlp>=1.25
+# или для Jaeger:
+# opentelemetry-exporter-jaeger>=1.21
+
+# Для WebSocket — встроено в FastAPI/uvicorn[standard]
+
+# Для /api/traces из tempo
+requests>=2.31
+
+
+cryptography>=41.0

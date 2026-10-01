@@ -1,0 +1,20 @@
+# ─────────── Документация ───────────
+
+docs:build:
+  stage: docs
+  extends: .python-setup
+  script:
+    - |
+      python -m sphinx -b html docs/api-generated \
+        docs/api-generated/_build/html -W --keep-going
+    - |
+      # Копируем входной README и гайды для единой страницы
+      cp README.md docs/api-generated/_build/html/README.md || true
+  artifacts:
+    name: "api-docs-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - docs/api-generated/_build/html
+    expire_in: 1 week
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

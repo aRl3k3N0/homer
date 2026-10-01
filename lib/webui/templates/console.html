@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+{% block title %}Консоль — Homer{% endblock %}
+{% block content %}
+
+<div class="row mb-2">
+  <div class="col-md-5">
+    <label class="form-label">Команда</label>
+    <select class="form-select" id="cmd-select">
+      {% for name in commands %}
+        <option value="{{ name }}">{{ name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Аргументы (--key=value ...)</label>
+    <input type="text" class="form-control" id="cmd-args"
+           placeholder="--user=cmdb --ver=16">
+  </div>
+  <div class="col-md-1 d-flex align-items-end">
+    <button class="btn btn-primary w-100" id="cmd-run">▶</button>
+  </div>
+</div>
+
+<div class="d-flex justify-content-between mb-2">
+  <div class="text-muted small" id="cmd-status">Готово</div>
+  <div>
+    <button class="btn btn-sm btn-outline-danger" id="cmd-stop" disabled>Стоп (Ctrl+C)</button>
+    <button class="btn btn-sm btn-outline-secondary" id="cmd-clear">Очистить</button>
+  </div>
+</div>
+
+<pre id="console-output"
+     style="background:#1e1e1e;color:#d4d4d4;padding:1rem;height:60vh;
+            overflow:auto;font-family:Menlo,Consolas,monospace;
+            font-size:0.85em;border-radius:6px;white-space:pre-wrap;"></pre>
+
+<div id="input-area" class="mt-2 d-none">
+  <div class="input-group">
+    <span class="input-group-text" id="input-prompt">?</span>
+    <input type="text" class="form-control" id="input-value" autocomplete="off">
+    <button class="btn btn-success" id="input-send">Отправить</button>
+  </div>
+</div>
+
+<style>
+  .con-out  { color: #d4d4d4; }
+  .con-err  { color: #f48771; }
+  .con-sys  { color: #569cd6; }
+  .con-ok   { color: #4ec9b0; }
+  .con-cmd  { color: #dcdcaa; }
+</style>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const out = $('console-output');
+  const status = $('cmd-status');
+  const inputArea = $('input-area');
+  const inputEl = $('input-value');
+  const inputPrompt = $('input-prompt');
+
+  let ws = null;
+  let currentInputId = null;
+
+  function esc(s) {
+    return String(s)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+  }
+
+  function append(text, cls = 'con-out') {
+    out.insertAdjacentHTML('beforeend', `<span class="${cls}">${esc(text)}</span>`);
+    out.scrollTop = out.scrollHeight;
+  }
+
+  function parseArgs(str) {
+    const args = {};
+    if (!str) return args;
+    // Простой парсер: --k=v, --k, разделены пробелами, поддерживает кавычки
+    const re = /--([\w\-]+)(?:=("[^"]*"|'[^']*'|\S+))?/g;
+    let m;
+    while ((m = re.exec(str)) !== null) {
+      const key = m[1];
+      let val = m[2];
+      if (val === undefined) val = true;
+      else val = val.replace(/^['"]|['"]$/g, '');
+      args[key] = val;
+    }
+    return args;
+  }
+
+  function wsUrl() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${location.host}/ws/console${location.search}`;
+  }
+
+  function connect() {
+    ws = new WebSocket(wsUrl());
+
+    ws.onopen = () => {
+      const command = $('cmd-select').value;
+      const args = parseArgs($('cmd-args').value);
+      ws.send(JSON.stringify({command, args}));
+      status.textContent = `Выполняется: ${command}`;
+      $('cmd-stop').disabled = false;
+    };
+
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+
+      if (msg.type === 'started') {
+        append(`$ homer ${msg.command} `, 'con-cmd');
+        if (Object.keys(msg.args).length) {
+          append(Object.entries(msg.args).map(([k, v]) => `--${k}=${v}`).join(' '), 'con-cmd');
+        }
+        append('\n', 'con-cmd');
+      } else if (msg.type === 'output') {
+        append(msg.data, msg.stream === 'stderr' ? 'con-err' : 'con-out');
+      } else if (msg.type === 'input_request') {
+        currentInputId = msg.id;
+        inputPrompt.textContent = msg.prompt || '?';
+        inputArea.classList.remove('d-none');
+        inputEl.value = '';
+        inputEl.focus();
+        append(msg.prompt, 'con-sys');
+      } else if (msg.type === 'error') {
+        append(`[error] ${msg.message}\n`, 'con-err');
+      } else if (msg.type === 'done') {
+        append(`\n[exit code: ${msg.exit_code}]\n`, msg.exit_code === 0 ? 'con-ok' : 'con-err');
+        status.textContent = `Завершено (exit=${msg.exit_code})`;
+        $('cmd-stop').disabled = true;
+        ws.close();
+      }
+    };
+
+    ws.onclose = () => {
+      status.textContent = 'Соединение закрыто';
+      $('cmd-stop').disabled = true;
+    };
+
+    ws.onerror = (e) => append(`[ws error] ${e}\n`, 'con-err');
+  }
+
+  function sendInput() {
+    if (!currentInputId) return;
+    const v = inputEl.value;
+    ws.send(JSON.stringify({type: 'input_response', id: currentInputId, value: v}));
+    append(v + '\n', 'con-sys');
+    inputArea.classList.add('d-none');
+    currentInputId = null;
+  }
+
+  $('cmd-run').onclick = () => {
+    if (ws) { try { ws.close(); } catch {} }
+    out.innerHTML = '';
+    connect();
+  };
+
+  $('cmd-stop').onclick = () => {
+    if (ws) ws.send(JSON.stringify({type: 'signal', signal: 'SIGINT'}));
+  };
+
+  $('cmd-clear').onclick = () => { out.innerHTML = ''; };
+  $('input-send').onclick = sendInput;
+  inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendInput(); });
+})();
+</script>
+
+{% endblock %}

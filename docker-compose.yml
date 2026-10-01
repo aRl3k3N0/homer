@@ -1,0 +1,40 @@
+services:
+  homer-cron:
+    image: ghcr.io/<user>/homer:latest
+    container_name: homer-cron
+    restart: unless-stopped
+    command: ["schedule:run", "--interval=30", "--workers=0"]
+    volumes:
+      - ./config.yml:/app/config.yml:ro
+      - homer-var:/app/var
+      - homer-logs:/app/logs
+    environment:
+      - TZ=Europe/Moscow
+
+  homer-worker-1:
+    image: ghcr.io/<user>/homer:latest
+    container_name: homer-worker-1
+    restart: unless-stopped
+    command: ["queue:work", "--interval=2", "--workers=8"]
+    volumes:
+      - ./config.yml:/app/config.yml:ro
+      - homer-var:/app/var
+      - homer-logs:/app/logs
+    depends_on:
+      - homer-cron
+
+  homer-worker-2:
+    image: ghcr.io/<user>/homer:latest
+    container_name: homer-worker-2
+    restart: unless-stopped
+    command: ["queue:work", "--interval=2", "--workers=8"]
+    volumes:
+      - ./config.yml:/app/config.yml:ro
+      - homer-var:/app/var
+      - homer-logs:/app/logs
+    depends_on:
+      - homer-cron
+
+volumes:
+  homer-var:
+  homer-logs:

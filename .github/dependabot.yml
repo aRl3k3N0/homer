@@ -1,0 +1,86 @@
+version: 2
+updates:
+  # ─────────── Python: requirements.txt ───────────
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/Moscow"
+    open-pull-requests-limit: 10
+    target-branch: main
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    reviewers:
+      - "<user>"
+    assignees:
+      - "<user>"
+    groups:
+      # Группировка пакетов одной «семьи» в один PR
+      testing:
+        patterns:
+          - "pytest*"
+      linting:
+        patterns:
+          - "ruff"
+          - "flake8*"
+          - "mypy"
+      docs:
+        patterns:
+          - "Sphinx*"
+          - "sphinx-*"
+          - "myst-parser"
+      db:
+        patterns:
+          - "psycopg2*"
+          - "cx_Oracle*"
+    ignore:
+      # Игнор мажорных обновлений для критичных пакетов
+      - dependency-name: "psycopg2-binary"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "cx_Oracle"
+        update-types: ["version-update:semver-major"]
+
+  # ─────────── GitHub Actions ───────────
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/Moscow"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "chore(ci)"
+      include: scope
+
+  # ─────────── Docker ───────────
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Europe/Moscow"
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: "chore(docker)"
+      include: scope
+
+  # ─────────── pip (pyproject.toml) ───────────
+  # Раскомментируйте, если будете переводить зависимости в pyproject
+  # - package-ecosystem: pip
+  #   directory: "/"
+  #   schedule:
+  #     interval: weekly

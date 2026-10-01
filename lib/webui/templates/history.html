@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}История — Homer{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>История запусков <span class="badge bg-secondary">{{ user }}</span></h3>
+  <form method="get" class="row g-2">
+    <div class="col-auto">
+      <select class="form-select form-select-sm" name="command"
+              onchange="this.form.submit()">
+        <option value="">Все команды</option>
+        {% for c in commands %}
+          <option value="{{ c }}" {% if c == selected_command %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <input type="number" class="form-control form-control-sm" name="limit"
+             value="{{ entries|length or 100 }}" min="10" max="1000" step="10"
+             onchange="this.form.submit()">
+    </div>
+  </form>
+</div>
+
+<table class="table table-sm table-hover">
+  <thead class="table-light">
+    <tr>
+      <th>Когда</th>
+      <th>Команда</th>
+      <th>Аргументы</th>
+      <th>Exit</th>
+      <th>Длительность</th>
+      <th>IP</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for e in entries %}
+    <tr>
+      <td>
+        {% if e.started_at %}
+          <span title="{{ e.started_at.isoformat() }}">
+            {{ e.started_at.strftime('%d.%m %H:%M:%S') }}
+          </span>
+        {% else %}—{% endif %}
+      </td>
+      <td>{{ e.command }}</td>
+      <td><code>{{ e.args }}</code></td>
+      <td>
+        {% if e.exit_code == 0 %}
+          <span class="badge bg-success">0</span>
+        {% elif e.exit_code is not none %}
+          <span class="badge bg-danger">{{ e.exit_code }}</span>
+        {% else %}
+          <span class="badge bg-secondary">—</span>
+        {% endif %}
+      </td>
+      <td>{{ e.duration_ms }} мс</td>
+      <td>{{ e.client_ip or '—' }}</td>
+      <td class="text-end">
+        <a class="btn btn-sm btn-outline-primary"
+           href="/history/{{ e.id }}">Открыть</a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="/console?command={{ e.command }}&args={{ e.args | urlencode }}">Retry</a>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="text-center text-muted py-4">История пуста</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% endblock %}

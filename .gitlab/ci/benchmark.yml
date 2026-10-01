@@ -1,0 +1,32 @@
+# ─────────── Benchmark ───────────
+
+benchmark:
+  stage: benchmark
+  extends: .python-setup
+  variables:
+    GIT_STRATEGY: fetch
+    GIT_DEPTH: 0            # нужна история для сравнения
+  script:
+    - mkdir -p .benchmarks
+    - |
+      if [ -f .benchmarks/Linux-CPython-3.11-64bit/0001_${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}.json ]; then
+        BASE="--benchmark-compare=^${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
+      else
+        BASE=""
+      fi
+    - |
+      python -m pytest benchmarks/ \
+        --benchmark-only \
+        --benchmark-autosave \
+        --benchmark-storage=.benchmarks \
+        --benchmark-json=benchmark.json \
+        $BASE
+  artifacts:
+    when: always
+    paths:
+      - benchmark.json
+      - .benchmarks/
+    expire_in: 30 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -1,0 +1,35 @@
+# Конфигурация Codecov.
+coverage:
+  precision: 2
+  round: down
+  range: "40...90"
+
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%          # падение покрытия больше 1% — CI краснеет
+        base: auto
+        informational: false
+    patch:
+      default:
+        target: 70%            # новый код должен быть покрыт на 70%
+        threshold: 5%
+        informational: true    # только предупреждение, не блокирует
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
+ignore:
+  - "tests/"
+  - "commands/"
+  - "examples/"
+  - "docs/"
+  - "lib/commands/"          # встроенные команды — CLI-обёртки, покрытие низкое
+  - "homer"                  # точка входа
+  - "**/__init__.py"
+  - "**/__main__.py"

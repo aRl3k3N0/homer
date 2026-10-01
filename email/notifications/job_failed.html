@@ -1,0 +1,16 @@
+{% extends "notifications/base.html" %}
+{% block title %}Задача не выполнена{% endblock %}
+{% block content %}
+  <p>Задача <b>{{ command }}</b> завершилась со статусом
+     <span style="color:red">{{ status }}</span>.</p>
+  <ul>
+    <li>Job ID: {{ job_id }}</li>
+    <li>Exit code: {{ exit_code }}</li>
+    <li>Попыток: {{ attempts }}/{{ max_attempts }}</li>
+    <li>Источник: {{ triggered_by or '—' }}</li>
+  </ul>
+  {% if error %}
+    <h3>Ошибка</h3>
+    <pre style="background:#fee;padding:10px">{{ error }}</pre>
+  {% endif %}
+{% endblock %}
