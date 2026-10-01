@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>CMDB: проблемы с бэкапами</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2933;">
+
+<div style="display:none;font-size:1px;color:#f4f6f8;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+    5 кластеров с проблемами бэкапа
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
+    <tr><td align="center" style="padding:24px 12px;">
+
+        <table role="presentation" width="800" cellpadding="0" cellspacing="0" style="max-width:800px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+
+            <tr>
+                <td style="background:#b91c1c;padding:24px 32px;">
+                    <table role="presentation" width="100%">
+                        <tr>
+                            <td style="color:#ffffff;font-size:20px;font-weight:600;">⚠️ Проблемы с бэкапами кластеров</td>
+                            <td align="right" style="color:#fecaca;font-size:13px;">01.10.2026 08:00 MSK</td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <tr>
+                <td style="padding:20px 32px 0 32px;color:#475569;font-size:14px;">
+                    Обнаружено <b>5</b> кластеров, требующих внимания. Проверьте статус бэкапов.
+                </td>
+            </tr>
+
+            <tr>
+                <td style="padding:20px 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:8px;margin-bottom:12px;background:#fffafa;">
+                        <tr><td style="padding:14px 16px;">
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:14px;font-weight:600;color:#0f2b46;">ora-legacy-archive
+                                        <span style="margin-left:6px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#fee2e2;color:#991b1b;">Oracle</span>
+                                    </td>
+                                    <td align="right"><span style="display:inline-block;padding:3px 10px;border-radius:10px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;text-transform:uppercase;">Высокий</span></td>
+                                </tr>
+                                <tr><td colspan="2" style="padding-top:6px;color:#64748b;font-size:12px;">
+                                    Бэкап старше 48 часов · последний бэкап: <b style="color:#991b1b;">28.09.2026 22:00</b>
+                                </td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:8px;margin-bottom:12px;background:#fffafa;">
+                        <tr><td style="padding:14px 16px;">
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:14px;font-weight:600;color:#0f2b46;">pg-backup-archive
+                                        <span style="margin-left:6px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1e40af;">Postgres</span>
+                                    </td>
+                                    <td align="right"><span style="display:inline-block;padding:3px 10px;border-radius:10px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;text-transform:uppercase;">Средний</span></td>
+                                </tr>
+                                <tr><td colspan="2" style="padding-top:6px;color:#64748b;font-size:12px;">
+                                    Бэкап старше 24 часов · последний бэкап: <b style="color:#92400e;">29.09.2026 22:00</b>
+                                </td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:8px;margin-bottom:12px;background:#fffafa;">
+                        <tr><td style="padding:14px 16px;">
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:14px;font-weight:600;color:#0f2b46;">mysql-hr-legacy
+                                        <span style="margin-left:6px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#ccfbf1;color:#115e59;">MariaDB/MySQL</span>
+                                    </td>
+                                    <td align="right"><span style="display:inline-block;padding:3px 10px;border-radius:10px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;text-transform:uppercase;">Средний</span></td>
+                                </tr>
+                                <tr><td colspan="2" style="padding-top:6px;color:#64748b;font-size:12px;">
+                                    Бэкап старше 72 часов · последний бэкап: <b style="color:#92400e;">27.09.2026 23:00</b>
+                                </td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:8px;margin-bottom:12px;background:#fffafa;">
+                        <tr><td style="padding:14px 16px;">
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:14px;font-weight:600;color:#0f2b46;">mssql-dwh-archive
+                                        <span style="margin-left:6px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1e3a8a;">MS SQL</span>
+                                    </td>
+                                    <td align="right"><span style="display:inline-block;padding:3px 10px;border-radius:10px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;text-transform:uppercase;">Высокий</span></td>
+                                </tr>
+                                <tr><td colspan="2" style="padding-top:6px;color:#64748b;font-size:12px;">
+                                    Бэкап старше 120 часов · последний бэкап: <b style="color:#991b1b;">25.09.2026 22:00</b>
+                                </td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fecaca;border-left:4px solid #dc2626;border-radius:8px;background:#fffafa;">
+                        <tr><td style="padding:14px 16px;">
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:14px;font-weight:600;color:#0f2b46;">pg-billing-backup-dr
+                                        <span style="margin-left:6px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1e40af;">Postgres</span>
+                                    </td>
+                                    <td align="right"><span style="display:inline-block;padding:3px 10px;border-radius:10px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;text-transform:uppercase;">Средний</span></td>
+                                </tr>
+                                <tr><td colspan="2" style="padding-top:6px;color:#64748b;font-size:12px;">
+                                    Размер бэкапа упал на 40% за сутки · <b style="color:#92400e;">620 GB → 372 GB</b>
+                                </td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+                </td>
+            </tr>
+
+            <tr>
+                <td style="padding:16px 32px 28px 32px;border-top:1px solid #eef2f6;color:#94a3b8;font-size:12px;">
+                    Источник: CMDB · Автоматический алерт
+                </td>
+            </tr>
+
+        </table>
+
+    </td></tr>
+</table>
+</body>
+</html>

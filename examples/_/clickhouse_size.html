@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>ClickHouse: размеры и бэкапы</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2933;">
+
+<div style="display:none;font-size:1px;color:#f4f6f8;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+    ClickHouse: размеры кластеров и бэкапов на 01.10.2026 — 6 кластеров
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
+    <tr><td align="center" style="padding:24px 12px;">
+
+        <table role="presentation" width="900" cellpadding="0" cellspacing="0" style="max-width:900px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+
+            <tr>
+                <td style="background:#a16207;padding:24px 32px;">
+                    <table role="presentation" width="100%">
+                        <tr>
+                            <td style="color:#ffffff;font-size:20px;font-weight:600;">📊 ClickHouse · Размеры кластеров и бэкапов</td>
+                            <td align="right" style="color:#fef08a;font-size:13px;">01.10.2026</td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <tr>
+                <td style="padding:24px 32px 8px 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                            <td width="25%" style="padding-right:6px;">
+                                <div style="background:#f8fafc;border-radius:8px;padding:14px 16px;border:1px solid #e2e8f0;">
+                                    <div style="font-size:11px;color:#64748b;text-transform:uppercase;">Кластеров</div>
+                                    <div style="font-size:22px;font-weight:700;color:#0f2b46;margin-top:4px;">6</div>
+                                </div>
+                            </td>
+                            <td width="25%" style="padding:0 6px;">
+                                <div style="background:#f8fafc;border-radius:8px;padding:14px 16px;border:1px solid #e2e8f0;">
+                                    <div style="font-size:11px;color:#64748b;text-transform:uppercase;">Общий размер</div>
+                                    <div style="font-size:22px;font-weight:700;color:#0f2b46;margin-top:4px;">42.5 TB</div>
+                                </div>
+                            </td>
+                            <td width="25%" style="padding:0 6px;">
+                                <div style="background:#f8fafc;border-radius:8px;padding:14px 16px;border:1px solid #e2e8f0;">
+                                    <div style="font-size:11px;color:#64748b;text-transform:uppercase;">Размер бэкапов</div>
+                                    <div style="font-size:22px;font-weight:700;color:#0f2b46;margin-top:4px;">18.3 TB</div>
+                                </div>
+                            </td>
+                            <td width="25%" style="padding-left:6px;">
+                                <div style="background:#fdecec;border-radius:8px;padding:14px 16px;border:1px solid #fecaca;">
+                                    <div style="font-size:11px;color:#991b1b;text-transform:uppercase;">Без свежего бэкапа</div>
+                                    <div style="font-size:22px;font-weight:700;color:#991b1b;margin-top:4px;">0</div>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <tr>
+                <td style="padding:24px 32px 8px 32px;">
+                    <div style="font-size:15px;font-weight:600;color:#0f2b46;margin-bottom:12px;">Кластеры ClickHouse</div>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+                        <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th align="left"  style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Кластер</th>
+                            <th align="left"  style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Тип</th>
+                            <th align="left"  style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Организация</th>
+                            <th align="right" style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Размер</th>
+                            <th align="right" style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Δ</th>
+                            <th align="right" style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Бэкап</th>
+                            <th align="left"  style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Дата бэкапа</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr style="border-bottom:1px solid #eef2f6;">
+                            <td style="padding:12px;font-weight:600;color:#0f2b46;">ch-analytics-01<div style="font-weight:400;color:#94a3b8;font-size:11px;margin-top:2px;">Аналитика</div></td>
+                            <td style="padding:12px;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dcfce7;color:#166534;">Боевой</span></td>
+                            <td style="padding:12px;color:#475569;">ООО «Ромашка»</td>
+                            <td align="right" style="padding:12px;color:#0f2b46;font-variant-numeric:tabular-nums;">28.4 TB</td>
+                            <td align="right" style="padding:12px;color:#dc2626;font-variant-numeric:tabular-nums;">+340 GB</td>
+                            <td align="right" style="padding:12px;color:#0f2b46;font-variant-numeric:tabular-nums;">11.2 TB</td>
+                            <td style="padding:12px;color:#475569;white-space:nowrap;">01.10.2026 04:30</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #eef2f6;">
+                            <td style="padding:12px;font-weight:600;color:#0f2b46;">ch-analytics-02<div style="font-weight:400;color:#94a3b8;font-size:11px;margin-top:2px;">Аналитика</div></td>
+                            <td style="padding:12px;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dbeafe;color:#1e40af;">StandBy</span></td>
+                            <td style="padding:12px;color:#475569;">ООО «Ромашка»</td>
+                            <td align="right" style="padding:12px;color:#0f2b46;font-variant-numeric:tabular-nums;">28.4 TB</td>
+                            <td align="right" style="padding:12px;color:#dc2626;font-variant-numeric:tabular-nums;">+340 GB</td>
+                            <td align="right" style="padding:12px;color:#0f2b46;font-variant-numeric:tabular-nums;">—</td>
+                            <td style="padding:12px;color:#94a3b8;">не требуется</td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #eef2f6;">
+                            <td style="padding:12px;font-weight:600;color:#0f2b46;">ch-metrics-hot<div style="font-weight:400;color:#94a3b8;font-size:11px;margin-top:2px;">Метрики</div></td>
+                            <td style="padding:12px;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dcfce7;color:#166534;">Боевой</span></td>
+                            <td style="padding:12px;color:#475569;">АО «Василёк»</td>
+                            <td align="right" style="padding:12px;color:#0f2b46;font-variant-numeric:tabular-nums;">14.1 TB</td>
+                            <td align="right" style="padding:12px;color:#16a34a;font-variant-numeric:tabular-nums;">−80 GB</td>
+                            <td align="right" style="padding:12px;color:#0f2b46;font-variant-numeric:tabular-nums;">7.1 TB</td>
+                            <td style="padding:12px;color:#475569;white-space:nowrap;">01.10.2026 04:15</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+
+            <tr>
+                <td style="padding:20px 32px 28px 32px;border-top:1px solid #eef2f6;color:#94a3b8;font-size:12px;">
+                    Δ — изменение относительно прошлого отчёта · Источник: CMDB · 01.10.2026 08:00 MSK
+                </td>
+            </tr>
+
+        </table>
+
+    </td></tr>
+</table>
+</body>
+</html>

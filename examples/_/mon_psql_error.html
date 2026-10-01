@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Мониторинг PostgreSQL: проблемы</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2933;">
+
+<div style="display:none;font-size:1px;color:#f4f6f8;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+    Мониторинг PostgreSQL: 2 CRITICAL, 3 WARNING на 01.10.2026 08:00
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
+    <tr><td align="center" style="padding:24px 12px;">
+
+        <table role="presentation" width="960" cellpadding="0" cellspacing="0" style="max-width:960px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+
+            <!-- Шапка -->
+            <tr>
+                <td style="background:#0f2b46;padding:24px 32px;">
+                    <table role="presentation" width="100%">
+                        <tr>
+                            <td style="color:#ffffff;font-size:20px;font-weight:600;">🐘 Мониторинг PostgreSQL-кластеров</td>
+                            <td align="right" style="color:#8fb3d1;font-size:13px;">01.10.2026 08:00 MSK</td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- Summary-карточки -->
+            <tr>
+                <td style="padding:24px 32px 8px 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                            <td width="20%" style="padding-right:6px;">
+                                <div style="background:#f8fafc;border-radius:8px;padding:14px 16px;border:1px solid #e2e8f0;">
+                                    <div style="font-size:11px;color:#64748b;text-transform:uppercase;">Кластеров проверено</div>
+                                    <div style="font-size:22px;font-weight:700;color:#0f2b46;margin-top:4px;">34</div>
+                                </div>
+                            </td>
+                            <td width="20%" style="padding:0 6px;">
+                                <div style="background:#f0fdf4;border-radius:8px;padding:14px 16px;border:1px solid #bbf7d0;">
+                                    <div style="font-size:11px;color:#166534;text-transform:uppercase;">OK</div>
+                                    <div style="font-size:22px;font-weight:700;color:#166534;margin-top:4px;">29</div>
+                                </div>
+                            </td>
+                            <td width="20%" style="padding:0 6px;">
+                                <div style="background:#fffbeb;border-radius:8px;padding:14px 16px;border:1px solid #fde68a;">
+                                    <div style="font-size:11px;color:#92400e;text-transform:uppercase;">Warning</div>
+                                    <div style="font-size:22px;font-weight:700;color:#92400e;margin-top:4px;">3</div>
+                                </div>
+                            </td>
+                            <td width="20%" style="padding:0 6px;">
+                                <div style="background:#fef2f2;border-radius:8px;padding:14px 16px;border:1px solid #fecaca;">
+                                    <div style="font-size:11px;color:#991b1b;text-transform:uppercase;">Critical</div>
+                                    <div style="font-size:22px;font-weight:700;color:#991b1b;margin-top:4px;">2</div>
+                                </div>
+                            </td>
+                            <td width="20%" style="padding-left:6px;">
+                                <div style="background:#f1f5f9;border-radius:8px;padding:14px 16px;border:1px solid #e2e8f0;">
+                                    <div style="font-size:11px;color:#475569;text-transform:uppercase;">Всего алертов</div>
+                                    <div style="font-size:22px;font-weight:700;color:#0f2b46;margin-top:4px;">18</div>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- Легенда -->
+            <tr>
+                <td style="padding:16px 32px 0 32px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0">
+                        <tr>
+                            <td style="padding-right:18px;font-size:12px;color:#475569;">
+                                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#dc2626;vertical-align:middle;margin-right:6px;"></span>
+                                CRITICAL — немедленное вмешательство
+                            </td>
+                            <td style="padding-right:18px;font-size:12px;color:#475569;">
+                                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d97706;vertical-align:middle;margin-right:6px;"></span>
+                                WARNING — требует внимания
+                            </td>
+                            <td style="font-size:12px;color:#475569;">
+                                <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2563eb;vertical-align:middle;margin-right:6px;"></span>
+                                INFO — к сведению
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- ================= CRITICAL секция ================= -->
+            <tr>
+                <td style="padding:24px 32px 0 32px;">
+                    <div style="font-size:13px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">
+                        🔴 CRITICAL — 2 кластера
+                    </div>
+
+                    <!-- Блок кластера: CRITICAL -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fecaca;border-left:5px solid #dc2626;border-radius:10px;background:#fffafa;margin-bottom:14px;">
+                        <tr><td style="padding:16px 20px;">
+
+                            <!-- Заголовок кластера -->
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:16px;font-weight:700;color:#0f2b46;">
+                                        pg-billing-prod-01
+                                        <span style="margin-left:8px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1e40af;">Postgres 15.4</span>
+                                        <span style="margin-left:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dcfce7;color:#166534;">master</span>
+                                    </td>
+                                    <td align="right">
+                                        <span style="display:inline-block;padding:4px 12px;border-radius:10px;background:#dc2626;color:#ffffff;font-size:11px;font-weight:700;text-transform:uppercase;">Critical · 2</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding-top:4px;color:#94a3b8;font-size:12px;">
+                                        pg-node-01 · Биллинг · ООО «Ромашка»
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- Проблемы кластера -->
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;">
+
+                                <!-- Problem: swap -->
+                                <tr><td style="padding-bottom:10px;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                           style="background:#fef2f2;border-radius:8px;">
+                                        <tr>
+                                            <td width="6" style="background:#dc2626;"></td>
+                                            <td style="padding:12px 14px;">
+                                                <table role="presentation" width="100%">
+                                                    <tr>
+                                                        <td style="font-size:13px;font-weight:600;color:#991b1b;">Закончился swap</td>
+                                                        <td align="right" style="font-size:11px;color:#991b1b;font-weight:700;text-transform:uppercase;">Critical</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:13px;color:#475569;">
+                                                            Swap использован на <b>100%</b> (4.0 GB из 4.0 GB). Возможны деградация и OOM.
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:11px;color:#94a3b8;">
+                                                            Значение: <b>100%</b> · порог: 90% · последнее срабатывание: 01.10.2026 07:58 MSK
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td></tr>
+
+                                <!-- Problem: wal archive -->
+                                <tr><td>
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                           style="background:#fef2f2;border-radius:8px;">
+                                        <tr>
+                                            <td width="6" style="background:#dc2626;"></td>
+                                            <td style="padding:12px 14px;">
+                                                <table role="presentation" width="100%">
+                                                    <tr>
+                                                        <td style="font-size:13px;font-weight:600;color:#991b1b;">WAL file is not archived</td>
+                                                        <td align="right" style="font-size:11px;color:#991b1b;font-weight:700;text-transform:uppercase;">Critical</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:13px;color:#475569;">
+                                                            <b>12</b> WAL-файлов не заархивировано. Последний архив: <b>01.10.2026 07:12 MSK</b> (отставание 48 минут).
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:11px;color:#94a3b8;">
+                                                            Значение: <b>12 файлов</b> · порог: 5 · последнее срабатывание: 01.10.2026 07:58 MSK
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td></tr>
+
+                            </table>
+                        </td></tr>
+                    </table>
+
+                    <!-- Второй CRITICAL кластер -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fecaca;border-left:5px solid #dc2626;border-radius:10px;background:#fffafa;margin-bottom:14px;">
+                        <tr><td style="padding:16px 20px;">
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:16px;font-weight:700;color:#0f2b46;">
+                                        pg-logs-lagging
+                                        <span style="margin-left:8px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1e40af;">Postgres 14.9</span>
+                                        <span style="margin-left:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#fef3c7;color:#92400e;">Отстающий StandBy</span>
+                                    </td>
+                                    <td align="right">
+                                        <span style="display:inline-block;padding:4px 12px;border-radius:10px;background:#dc2626;color:#ffffff;font-size:11px;font-weight:700;text-transform:uppercase;">Critical · 1</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding-top:4px;color:#94a3b8;font-size:12px;">
+                                        pg-node-07 · Логи · ООО «Ромашка»
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;">
+                                <tr><td>
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                           style="background:#fef2f2;border-radius:8px;">
+                                        <tr>
+                                            <td width="6" style="background:#dc2626;"></td>
+                                            <td style="padding:12px 14px;">
+                                                <table role="presentation" width="100%">
+                                                    <tr>
+                                                        <td style="font-size:13px;font-weight:600;color:#991b1b;">Мало свободного места на диске</td>
+                                                        <td align="right" style="font-size:11px;color:#991b1b;font-weight:700;text-transform:uppercase;">Critical</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:13px;color:#475569;">
+                                                            Свободно <b>4%</b> на разделе <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px;">/var/lib/postgresql</code> (18 GB из 480 GB).
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:11px;color:#94a3b8;">
+                                                            Значение: <b>4%</b> · порог: 10% · последнее срабатывание: 01.10.2026 07:55 MSK
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- ================= WARNING секция ================= -->
+            <tr>
+                <td style="padding:24px 32px 0 32px;">
+                    <div style="font-size:13px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">
+                        🟡 WARNING — 3 кластера
+                    </div>
+
+                    <!-- Warning-кластер 1: buffer cache + log alerts -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fde68a;border-left:5px solid #d97706;border-radius:10px;background:#fffdf5;margin-bottom:14px;">
+                        <tr><td style="padding:16px 20px;">
+
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:16px;font-weight:700;color:#0f2b46;">
+                                        pg-crm-prod
+                                        <span style="margin-left:8px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1e40af;">Postgres 15.2</span>
+                                        <span style="margin-left:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dcfce7;color:#166534;">master</span>
+                                    </td>
+                                    <td align="right">
+                                        <span style="display:inline-block;padding:4px 12px;border-radius:10px;background:#d97706;color:#ffffff;font-size:11px;font-weight:700;text-transform:uppercase;">Warning · 3</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding-top:4px;color:#94a3b8;font-size:12px;">
+                                        pg-node-03 · CRM · АО «Василёк»
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;">
+
+                                <!-- Buffer cache hit rate -->
+                                <tr><td style="padding-bottom:10px;">
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                           style="background:#fffbeb;border-radius:8px;">
+                                        <tr>
+                                            <td width="6" style="background:#d97706;"></td>
+                                            <td style="padding:12px 14px;">
+                                                <table role="presentation" width="100%">
+                                                    <tr>
+                                                        <td style="font-size:13px;font-weight:600;color:#92400e;">Низкий buffer cache hit rate</td>
+                                                        <td align="right" style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;">Warning</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:13px;color:#475569;">
+                                                            Buffer cache hit rate <b>92.4%</b> — ниже целевого значения. Возможен рост I/O.
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:11px;color:#94a3b8;">
+                                                            Значение: <b>92.4%</b> · порог: 95% · последнее срабатывание: 01.10.2026 07:40 MSK
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td></tr>
+
+                                <!-- Группированный log alert -->
+                                <tr><td>
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                           style="background:#fffbeb;border-radius:8px;">
+                                        <tr>
+                                            <td width="6" style="background:#d97706;"></td>
+                                            <td style="padding:12px 14px;">
+                                                <table role="presentation" width="100%">
+                                                    <tr>
+                                                        <td style="font-size:13px;font-weight:600;color:#92400e;">⚠️ Log alert: ERROR в pg_log</td>
+                                                        <td align="right" style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;">Warning · 2 типа</td>
+                                                    </tr>
+                                                </table>
+
+                                                <!-- Тип ошибки #1 -->
+                                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                                       style="margin-top:10px;background:#ffffff;border:1px solid #fde68a;border-radius:6px;">
+                                                    <tr><td style="padding:10px 12px;">
+                                                        <table role="presentation" width="100%">
+                                                            <tr>
+                                                                <td style="font-size:12px;color:#0f2b46;">
+                                                                    <span style="display:inline-block;padding:2px 8px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;margin-right:8px;">18 раз</span>
+                                                                    <b>deadlock detected</b>
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td style="padding-top:8px;font-size:12px;color:#475569;font-family:Consolas,Monaco,monospace;background:#f8fafc;border-radius:6px;padding:10px 12px;line-height:1.5;">
+                                                                    ERROR: deadlock detected<br>
+                                                                    DETAIL: Process 12345 waits for ShareLock on transaction 987654; blocked by process 67890.
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td style="padding-top:8px;font-size:11px;color:#94a3b8;">
+                                                                    Срабатывания:
+                                                                    <span style="color:#475569;">01.10 03:14</span> ·
+                                                                    <span style="color:#475569;">01.10 04:02</span> ·
+                                                                    <span style="color:#475569;">01.10 04:47</span> ·
+                                                                    <span style="color:#475569;">01.10 05:21</span> ·
+                                                                    <span style="color:#475569;">01.10 06:08</span> ·
+                                                                    <span style="color:#475569;">01.10 07:12</span>
+                                                                    <span style="color:#94a3b8;">и ещё 12 раз</span>
+                                                                </td>
+                                                            </tr>
+                                                        </table>
+                                                    </td></tr>
+                                                </table>
+
+                                                <!-- Тип ошибки #2 -->
+                                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                                       style="margin-top:10px;background:#ffffff;border:1px solid #fde68a;border-radius:6px;">
+                                                    <tr><td style="padding:10px 12px;">
+                                                        <table role="presentation" width="100%">
+                                                            <tr>
+                                                                <td style="font-size:12px;color:#0f2b46;">
+                                                                    <span style="display:inline-block;padding:2px 8px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:11px;font-weight:700;margin-right:8px;">4 раза</span>
+                                                                    <b>could not receive data from client</b>
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td style="padding-top:8px;font-size:12px;color:#475569;font-family:Consolas,Monaco,monospace;background:#f8fafc;border-radius:6px;padding:10px 12px;line-height:1.5;">
+                                                                    LOG: could not receive data from client: Connection reset by peer
+                                                                </td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td style="padding-top:8px;font-size:11px;color:#94a3b8;">
+                                                                    Срабатывания:
+                                                                    <span style="color:#475569;">01.10 02:11</span> ·
+                                                                    <span style="color:#475569;">01.10 05:33</span> ·
+                                                                    <span style="color:#475569;">01.10 06:44</span> ·
+                                                                    <span style="color:#475569;">01.10 07:50</span>
+                                                                </td>
+                                                            </tr>
+                                                        </table>
+                                                    </td></tr>
+                                                </table>
+
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td></tr>
+
+                            </table>
+                        </td></tr>
+                    </table>
+
+                    <!-- Warning-кластер 2 -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fde68a;border-left:5px solid #d97706;border-radius:10px;background:#fffdf5;margin-bottom:14px;">
+                        <tr><td style="padding:16px 20px;">
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:16px;font-weight:700;color:#0f2b46;">
+                                        pg-shop-prod
+                                        <span style="margin-left:8px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1e40af;">Postgres 14.11</span>
+                                        <span style="margin-left:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dcfce7;color:#166534;">master</span>
+                                    </td>
+                                    <td align="right">
+                                        <span style="display:inline-block;padding:4px 12px;border-radius:10px;background:#d97706;color:#ffffff;font-size:11px;font-weight:700;text-transform:uppercase;">Warning · 1</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding-top:4px;color:#94a3b8;font-size:12px;">
+                                        pg-node-05 · Интернет-магазин · ООО «Ромашка»
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;">
+                                <tr><td>
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                           style="background:#fffbeb;border-radius:8px;">
+                                        <tr>
+                                            <td width="6" style="background:#d97706;"></td>
+                                            <td style="padding:12px 14px;">
+                                                <table role="presentation" width="100%">
+                                                    <tr>
+                                                        <td style="font-size:13px;font-weight:600;color:#92400e;">Мало свободного места на диске</td>
+                                                        <td align="right" style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;">Warning</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:13px;color:#475569;">
+                                                            Свободно <b>8%</b> на разделе <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:12px;">/var/lib/postgresql</code> (64 GB из 800 GB).
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:11px;color:#94a3b8;">
+                                                            Значение: <b>8%</b> · порог: 10% · последнее срабатывание: 01.10.2026 07:50 MSK
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+
+                    <!-- Warning-кластер 3 -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fde68a;border-left:5px solid #d97706;border-radius:10px;background:#fffdf5;">
+                        <tr><td style="padding:16px 20px;">
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:16px;font-weight:700;color:#0f2b46;">
+                                        pg-analytics-standby
+                                        <span style="margin-left:8px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1e40af;">Postgres 15.4</span>
+                                        <span style="margin-left:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:10px;background:#dbeafe;color:#1e40af;">StandBy</span>
+                                    </td>
+                                    <td align="right">
+                                        <span style="display:inline-block;padding:4px 12px;border-radius:10px;background:#d97706;color:#ffffff;font-size:11px;font-weight:700;text-transform:uppercase;">Warning · 1</span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" style="padding-top:4px;color:#94a3b8;font-size:12px;">
+                                        pg-node-09 · Аналитика · ООО «Ромашка»
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:14px;">
+                                <tr><td>
+                                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                           style="background:#fffbeb;border-radius:8px;">
+                                        <tr>
+                                            <td width="6" style="background:#d97706;"></td>
+                                            <td style="padding:12px 14px;">
+                                                <table role="presentation" width="100%">
+                                                    <tr>
+                                                        <td style="font-size:13px;font-weight:600;color:#92400e;">WAL file is not archived</td>
+                                                        <td align="right" style="font-size:11px;color:#92400e;font-weight:700;text-transform:uppercase;">Warning</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:13px;color:#475569;">
+                                                            <b>2</b> WAL-файла не заархивировано. Отставание архивации 12 минут.
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colspan="2" style="padding-top:6px;font-size:11px;color:#94a3b8;">
+                                                            Значение: <b>2 файла</b> · порог: 5 · последнее срабатывание: 01.10.2026 07:52 MSK
+                                                        </td>
+                                                    </tr>
+                                                </table>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- Подвал -->
+            <tr>
+                <td style="padding:24px 32px 28px 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+                        <tr><td style="padding:14px 16px;font-size:12px;color:#64748b;">
+                            <b style="color:#0f2b46;">Дополнительно:</b>
+                            29 кластеров без замечаний · 1 кластер исключён из проверки (status: Запланирован).
+                            <br>Источник: CMDB + pg_monitoring · Сформировано автоматически · 01.10.2026 08:00 MSK
+                        </td></tr>
+                    </table>
+                </td>
+            </tr>
+
+        </table>
+
+    </td></tr>
+</table>
+</body>
+</html>

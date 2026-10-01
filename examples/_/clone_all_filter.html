@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Клонирование на dev: полный отчёт</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1f2933;">
+
+<div style="display:none;font-size:1px;color:#f4f6f8;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">
+    Полный отчёт о клонировании боя на dev за 01.10.2026
+</div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;">
+    <tr><td align="center" style="padding:24px 12px;">
+
+        <table role="presentation" width="960" cellpadding="0" cellspacing="0" style="max-width:960px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);">
+
+            <tr>
+                <td style="background:#0f2b46;padding:24px 32px;">
+                    <table role="presentation" width="100%">
+                        <tr>
+                            <td style="color:#ffffff;font-size:20px;font-weight:600;">🧬 Клонирование боя на dev · полный отчёт</td>
+                            <td align="right" style="color:#8fb3d1;font-size:13px;">01.10.2026 04:15 MSK</td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- Плитки-фильтры -->
+            <tr>
+                <td style="padding:24px 32px 8px 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                        <tr>
+                            <td width="25%" style="padding-right:6px;">
+                                <div style="background:#eef6ff;border-left:4px solid #2563eb;border-radius:8px;padding:14px 16px;">
+                                    <div style="font-size:11px;color:#64748b;text-transform:uppercase;">Всего</div>
+                                    <div style="font-size:22px;font-weight:700;color:#0f2b46;margin-top:4px;">12</div>
+                                </div>
+                            </td>
+                            <td width="25%" style="padding:0 6px;">
+                                <div style="background:#f0fdf4;border-left:4px solid #16a34a;border-radius:8px;padding:14px 16px;">
+                                    <div style="font-size:11px;color:#166534;text-transform:uppercase;">Успешно</div>
+                                    <div style="font-size:22px;font-weight:700;color:#166534;margin-top:4px;">9</div>
+                                </div>
+                            </td>
+                            <td width="25%" style="padding:0 6px;">
+                                <div style="background:#fffbeb;border-left:4px solid #d97706;border-radius:8px;padding:14px 16px;">
+                                    <div style="font-size:11px;color:#92400e;text-transform:uppercase;">Warning</div>
+                                    <div style="font-size:22px;font-weight:700;color:#92400e;margin-top:4px;">2</div>
+                                </div>
+                            </td>
+                            <td width="25%" style="padding-left:6px;">
+                                <div style="background:#fef2f2;border-left:4px solid #dc2626;border-radius:8px;padding:14px 16px;">
+                                    <div style="font-size:11px;color:#991b1b;text-transform:uppercase;">Failed</div>
+                                    <div style="font-size:22px;font-weight:700;color:#991b1b;margin-top:4px;">1</div>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- Один кластер = одна строка-карточка (сжатый вид для полного отчёта) -->
+            <tr>
+                <td style="padding:24px 32px 8px 32px;">
+                    <div style="font-size:15px;font-weight:600;color:#0f2b46;margin-bottom:12px;">Все клоны</div>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+                        <thead>
+                        <tr style="background:#f1f5f9;">
+                            <th align="left"  style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Кластер</th>
+                            <th align="left"  style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Источник</th>
+                            <th align="left"  style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">СУБД</th>
+                            <th align="right" style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Размер</th>
+                            <th align="right" style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Время</th>
+                            <th align="center" style="padding:10px 12px;color:#475569;font-weight:600;border-bottom:1px solid #e2e8f0;">Статус</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <!-- FAILED подсвечена красным -->
+                        <tr style="border-bottom:1px solid #eef2f6;background:#fffafa;">
+                            <td style="padding:10px 12px;font-weight:600;color:#0f2b46;">
+                                <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#dc2626;margin-right:8px;vertical-align:middle;"></span>
+                                dev-ora-erp-01
+                            </td>
+                            <td style="padding:10px 12px;color:#64748b;">ora-erp-prod</td>
+                            <td style="padding:10px 12px;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#fee2e2;color:#991b1b;">Oracle</span></td>
+                            <td align="right" style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;">6.8 TB</td>
+                            <td align="right" style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;">38 мин</td>
+                            <td align="center" style="padding:10px 12px;"><span style="display:inline-block;padding:2px 10px;border-radius:10px;background:#dc2626;color:#ffffff;font-size:11px;font-weight:700;">FAILED</span></td>
+                        </tr>
+                        <!-- WARNING подсвечены жёлтым -->
+                        <tr style="border-bottom:1px solid #eef2f6;background:#fffdf5;">
+                            <td style="padding:10px 12px;font-weight:600;color:#0f2b46;">
+                                <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#d97706;margin-right:8px;vertical-align:middle;"></span>
+                                dev-pg-billing-01
+                            </td>
+                            <td style="padding:10px 12px;color:#64748b;">pg-billing-prod-01</td>
+                            <td style="padding:10px 12px;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dbeafe;color:#1e40af;">Postgres</span></td>
+                            <td align="right" style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;">1.72 TB</td>
+                            <td align="right" style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;">12 мин</td>
+                            <td align="center" style="padding:10px 12px;"><span style="display:inline-block;padding:2px 10px;border-radius:10px;background:#d97706;color:#ffffff;font-size:11px;font-weight:700;">WARNING</span></td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #eef2f6;background:#fffdf5;">
+                            <td style="padding:10px 12px;font-weight:600;color:#0f2b46;">
+                                <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#d97706;margin-right:8px;vertical-align:middle;"></span>
+                                dev-ch-analytics-01
+                            </td>
+                            <td style="padding:10px 12px;color:#64748b;">ch-analytics-01</td>
+                            <td style="padding:10px 12px;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#fef3c7;color:#92400e;">ClickHouse</span></td>
+                            <td align="right" style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;">28.4 TB</td>
+                            <td align="right" style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;">41 мин</td>
+                            <td align="center" style="padding:10px 12px;"><span style="display:inline-block;padding:2px 10px;border-radius:10px;background:#d97706;color:#ffffff;font-size:11px;font-weight:700;">WARNING</span></td>
+                        </tr>
+                        <!-- OK -->
+                        <tr style="border-bottom:1px solid #eef2f6;">
+                            <td style="padding:10px 12px;font-weight:600;color:#0f2b46;">
+                                <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#16a34a;margin-right:8px;vertical-align:middle;"></span>
+                                dev-ora-crm-01
+                            </td>
+                            <td style="padding:10px 12px;color:#64748b;">ora-crm-prod</td>
+                            <td style="padding:10px 12px;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#fee2e2;color:#991b1b;">Oracle</span></td>
+                            <td align="right" style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;">4.2 TB</td>
+                            <td align="right" style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;">28 мин</td>
+                            <td align="center" style="padding:10px 12px;"><span style="display:inline-block;padding:2px 10px;border-radius:10px;background:#dcfce7;color:#166534;font-size:11px;font-weight:700;">✓ OK</span></td>
+                        </tr>
+                        <tr style="border-bottom:1px solid #eef2f6;">
+                            <td style="padding:10px 12px;font-weight:600;color:#0f2b46;">
+                                <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#16a34a;margin-right:8px;vertical-align:middle;"></span>
+                                dev-mongo-catalog-01
+                            </td>
+                            <td style="padding:10px 12px;color:#64748b;">mongo-catalog-prod</td>
+                            <td style="padding:10px 12px;"><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#dcfce7;color:#166534;">MongoDB</span></td>
+                            <td align="right" style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;">1.2 TB</td>
+                            <td align="right" style="padding:10px 12px;color:#475569;font-variant-numeric:tabular-nums;">14 мин</td>
+                            <td align="center" style="padding:10px 12px;"><span style="display:inline-block;padding:2px 10px;border-radius:10px;background:#dcfce7;color:#166534;font-size:11px;font-weight:700;">✓ OK</span></td>
+                        </tr>
+                        <tr>
+                            <td colspan="5" style="padding:10px 12px;color:#64748b;font-size:12px;font-style:italic;">… и ещё 7 кластеров</td>
+                            <td align="center" style="padding:10px 12px;">
+                                <span style="display:inline-block;padding:2px 10px;border-radius:10px;background:#f1f5f9;color:#475569;font-size:11px;font-weight:700;">+7</span>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+
+            <!-- Разбор ошибок (компактно) -->
+            <tr>
+                <td style="padding:24px 32px 8px 32px;">
+                    <div style="font-size:15px;font-weight:600;color:#0f2b46;margin-bottom:12px;">Разбор проблем</div>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fecaca;border-left:5px solid #dc2626;border-radius:10px;background:#fffafa;margin-bottom:12px;">
+                        <tr><td style="padding:14px 18px;">
+                            <table role="presentation" width="100%">
+                                <tr>
+                                    <td style="font-size:13px;font-weight:700;color:#991b1b;">dev-ora-erp-01 · Failed</td>
+                                </tr>
+                                <tr><td style="padding-top:6px;font-size:13px;color:#475569;">
+                                    Недостаточно места на целевом хранилище (нужно 6.8 TB, доступно 4.2 TB).
+                                </td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fde68a;border-left:5px solid #d97706;border-radius:10px;background:#fffdf5;margin-bottom:12px;">
+                        <tr><td style="padding:14px 18px;">
+                            <table role="presentation" width="100%">
+                                <tr><td style="font-size:13px;font-weight:700;color:#92400e;">dev-pg-billing-01 · Warning</td></tr>
+                                <tr><td style="padding-top:6px;font-size:13px;color:#475569;">Расхождение по размеру: ожидалось 1.8 TB, получилось 1.72 TB.</td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="border:1px solid #fde68a;border-left:5px solid #d97706;border-radius:10px;background:#fffdf5;">
+                        <tr><td style="padding:14px 18px;">
+                            <table role="presentation" width="100%">
+                                <tr><td style="font-size:13px;font-weight:700;color:#92400e;">dev-ch-analytics-01 · Warning</td></tr>
+                                <tr><td style="padding-top:6px;font-size:13px;color:#475569;">Реплика ch-node-03 отстаёт на 4 минуты.</td></tr>
+                            </table>
+                        </td></tr>
+                    </table>
+                </td>
+            </tr>
+
+            <tr>
+                <td style="padding:24px 32px 28px 32px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                           style="background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+                        <tr><td style="padding:14px 16px;font-size:12px;color:#64748b;">
+                            <b style="color:#0f2b46;">Итого:</b> 9 успешно · 2 warning · 1 failed · общий объём 38.2 TB · время выполнения 1 ч 38 мин.
+                            <br>Источник: CMDB + clone-pipeline · Сформировано автоматически · 01.10.2026 04:15 MSK
+                        </td></tr>
+                    </table>
+                </td>
+            </tr>
+
+        </table>
+
+    </td></tr>
+</table>
+</body>
+</html>
