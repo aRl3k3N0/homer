@@ -13,6 +13,7 @@ Mattermost-нотификатор через Incoming Webhook.
     color_warn:   "#f39c12"              # цвет плашки для canceled/timeout
     mention_on_fail: "@channel"          # опционально, упоминание при ошибке
 """
+
 import json
 
 from .base import BaseNotifier, NotifyEvent
@@ -42,14 +43,17 @@ class MattermostNotifier(BaseNotifier):
     def _http_post(self, url, payload):
         try:
             import requests
+
             r = requests.post(url, json=payload, timeout=10)
             r.raise_for_status()
             return r.text
         except ImportError:
             import urllib.request
+
             data = json.dumps(payload).encode('utf-8')
             req = urllib.request.Request(
-                url, data=data,
+                url,
+                data=data,
                 headers={'Content-Type': 'application/json'},
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -68,8 +72,7 @@ class MattermostNotifier(BaseNotifier):
         return '✅' if event.ok else '❌'
 
     def _title(self, event: NotifyEvent) -> str:
-        return (f"{self._icon(event)} Job #{event.job_id} "
-                f"({event.command}) — {event.status}")
+        return f"{self._icon(event)} Job #{event.job_id} ({event.command}) — {event.status}"
 
     def _build_fields(self, event: NotifyEvent) -> list:
         fields = [
@@ -87,25 +90,31 @@ class MattermostNotifier(BaseNotifier):
 
         if event.args:
             args_str = ', '.join(f'{k}={v}' for k, v in event.args.items())
-            fields.append({
-                'short': False,
-                'title': 'Аргументы',
-                'value': f'`{args_str}`',
-            })
+            fields.append(
+                {
+                    'short': False,
+                    'title': 'Аргументы',
+                    'value': f'`{args_str}`',
+                }
+            )
 
         if event.duration_sec is not None:
-            fields.append({
-                'short': True,
-                'title': 'Длительность',
-                'value': f"{round(event.duration_sec, 2)} с",
-            })
+            fields.append(
+                {
+                    'short': True,
+                    'title': 'Длительность',
+                    'value': f"{round(event.duration_sec, 2)} с",
+                }
+            )
 
         if event.triggered_by:
-            fields.append({
-                'short': True,
-                'title': 'Источник',
-                'value': f'`{event.triggered_by}`',
-            })
+            fields.append(
+                {
+                    'short': True,
+                    'title': 'Источник',
+                    'value': f'`{event.triggered_by}`',
+                }
+            )
 
         return fields
 

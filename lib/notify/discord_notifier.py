@@ -8,6 +8,7 @@ Discord — Webhook с embeds.
     on: [failed, timeout, canceled]
     mention_on_fail: "@here"   # опционально
 """
+
 import json
 
 from .base import BaseNotifier, NotifyEvent
@@ -28,14 +29,17 @@ class DiscordNotifier(BaseNotifier):
     def _http_post(self, url, payload):
         try:
             import requests
+
             r = requests.post(url, json=payload, timeout=10)
             r.raise_for_status()
             return r.text
         except ImportError:
             import urllib.request
+
             data = json.dumps(payload).encode('utf-8')
             req = urllib.request.Request(
-                url, data=data,
+                url,
+                data=data,
                 headers={'Content-Type': 'application/json'},
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -47,8 +51,11 @@ class DiscordNotifier(BaseNotifier):
         if not self.webhook_url:
             return
 
-        color = 0x2ecc71 if event.ok else (0xf39c12 if event.status in
-                                          ('timeout', 'canceled') else 0xe74c3c)
+        color = (
+            0x2ECC71
+            if event.ok
+            else (0xF39C12 if event.status in ('timeout', 'canceled') else 0xE74C3C)
+        )
 
         icon = '✅' if event.ok else '❌'
         embed = {
@@ -59,15 +66,19 @@ class DiscordNotifier(BaseNotifier):
         }
 
         embed['fields'].append({'name': 'Exit code', 'value': str(event.exit_code), 'inline': True})
-        embed['fields'].append({'name': 'Попыток',
-                                 'value': f"{event.attempts}/{event.max_attempts}",
-                                 'inline': True})
+        embed['fields'].append(
+            {'name': 'Попыток', 'value': f"{event.attempts}/{event.max_attempts}", 'inline': True}
+        )
         if event.args:
             embed['fields'].append({'name': 'Аргументы', 'value': f"`{event.args}`"[:1024]})
         if event.duration_sec is not None:
-            embed['fields'].append({'name': 'Длительность',
-                                     'value': f"{round(event.duration_sec, 2)}с",
-                                     'inline': True})
+            embed['fields'].append(
+                {
+                    'name': 'Длительность',
+                    'value': f"{round(event.duration_sec, 2)}с",
+                    'inline': True,
+                }
+            )
         if event.error:
             embed['description'] = f"```{(event.error or '')[:1500]}```"
 

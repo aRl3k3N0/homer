@@ -8,54 +8,57 @@ FastAPI-приложение для Web UI Homer.
     WS:        /ws, /ws/logs, /ws/console
     Служебные: /healthz, /metrics, /docs, /redoc, /openapi.json
 """
+
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 import json
-import uuid
-from datetime import date, datetime
-from lib.i18n import get_i18n
-from jinja2 import select_autoescape, Environment
 from pathlib import Path
 from typing import Optional
+import uuid
+from lib.auth import AuthStore, User, PERM_SYSTEM_ADMIN
+from lib.auth.manager import AuthManager
 
 from fastapi import (
-    FastAPI,
-    Request,
-    HTTPException,
     Depends,
-    Query,
+    FastAPI,
+    HTTPException,
     Path as FPath,
+    Query,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import (
+    FileResponse,
     HTMLResponse,
     JSONResponse,
     RedirectResponse,
     Response,
-    FileResponse,
     StreamingResponse,
 )
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from jinja2 import Environment, select_autoescape
 
+from lib.i18n import get_i18n
+from lib.paths import log_dir
 from lib.queue import QueueStorage
 from lib.queue.models import JobStatus
 from lib.webui.console_session import ConsoleSession
 from lib.webui.history import HistoryStorage
 from lib.webui.logs_reader import LogsReader
 from lib.webui.schemas import (
-    JobSchema,
-    StatsSchema,
-    HealthSchema,
-    PurgeResponse,
     ErrorResponse,
+    HealthSchema,
+    JobSchema,
+    PurgeResponse,
+    StatsSchema,
 )
 from lib.webui.ws import get_hub
-
 
 TEMPLATES_DIR = Path(__file__).parent / 'templates'
 STATIC_DIR = Path(__file__).parent / 'static'
@@ -80,13 +83,8 @@ TAGS_METADATA = [
     },
 ]
 
-def create_app(
-    config,
-    root_dir=None,
-    auth: Optional[tuple[str, str]] = None,
-    enable_docs: bool = True,
-    logger=None,
-):
+
+def create_app(config, root_dir=None, auth=None, enable_docs=True, logger=None):
     """
     Создаёт FastAPI-приложение.
 
@@ -106,7 +104,7 @@ def create_app(
 
         return stub
 
-    root_dir = Path(root_dir) if root_dir else Path('.')
+    root_dir = Path(root_dir) if root_dir else Path()
 
     app = FastAPI(
         title='Homer Queue API',
@@ -139,14 +137,14 @@ def create_app(
     if STATIC_DIR.exists():
         app.mount('/static', StaticFiles(directory=str(STATIC_DIR)), name='static')
 
-    #templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    # templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
     from lib.plugins import get_manager
+
     plugin_mgr = get_manager()
 
     # Jinja: основной каталог + каталоги плагинов
     from jinja2 import ChoiceLoader, FileSystemLoader
-    from fastapi.templating import Jinja2Templates
 
     search_dirs = [TEMPLATES_DIR]
     for p in plugin_mgr.list():
@@ -164,6 +162,8 @@ def create_app(
     # Jinja global: {{ _('webui.jobs.title') }}
     templates_env.globals['_'] = i18n.jinja_global()
     templates_env.globals['locale'] = i18n.locale
+    for name, fn in i18n.jinja_filters().items():
+        templates_env.filters[name] = fn
     templates = Jinja2Templates(env=templates_env)
 
     # Статика: /static/plugins/<plugin>/...
@@ -181,10 +181,79 @@ def create_app(
     hub = get_hub()
 
     # Логи — из <root>/logs
-    logs_reader = LogsReader(root_dir / 'var/log')
+    logs_reader = LogsReader(log_dir(config, root_dir))
 
     # История — ленивая
     _history_storage: Optional[HistoryStorage] = None
+
+    # Инициализация хранилища
+    auth_store = AuthStore(config)
+    auth_manager = AuthManager(config, auth_store)
+
+    session_cookie = config.get('webui.auth.cookie_name', 'homer_session')
+    session_lifetime = int(config.get('webui.auth.session_lifetime', 86400))
+    auth_mode = config.get('webui.auth.mode', 'session')  # session | basic | both
+
+    def _get_cookie(request: Request) -> Optional[str]:
+        return request.cookies.get(session_cookie)
+
+    def _user_from_request(request: Request) -> Optional[User]:
+        # 1) cookie-сессия
+        sid = _get_cookie(request)
+        if sid:
+            u = auth_manager.user_by_session(sid)
+            if u:
+                return u
+        # 2) Basic Auth
+        if auth_mode in ('basic', 'both') or config.get('webui.auth.basic_enabled', True):
+            h = request.headers.get('authorization', '')
+            if h.lower().startswith('basic '):
+                import base64
+                try:
+                    raw = base64.b64decode(h.split(' ', 1)[1]).decode('utf-8')
+                    username, _, password = raw.partition(':')
+                    pair = auth_manager.authenticate(
+                        username, password,
+                        ip=request.client.host if request.client else None,
+                        user_agent=request.headers.get('user-agent'),
+                    )
+                    if pair:
+                        return pair[0]
+                except Exception:
+                    pass
+        # 3) SSO (Kerberos)
+        pair = auth_manager.authenticate_sso(request)
+        if pair:
+            return pair[0]
+        return None
+
+    # ─── Dependency ───
+
+    def current_user_dep(request: Request) -> User:
+        user = _user_from_request(request)
+        if not user:
+            # Для HTML — редирект на /login; для API — 401
+            accept = request.headers.get('accept', '')
+            if 'text/html' in accept and not request.url.path.startswith('/api/'):
+                # Отдаём редирект через исключение
+                from fastapi import status
+                raise HTTPException(
+                    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+                    headers={'Location': f'/login?next={request.url.path}'},
+                )
+            raise HTTPException(
+                status_code=401,
+                detail='Unauthorized',
+                headers={'WWW-Authenticate': 'Basic realm="Homer"'},
+            )
+        return user
+
+    def require_perm(perm: str):
+        def _dep(user: User = Depends(current_user_dep)) -> User:
+            if not user.has_perm(perm):
+                raise HTTPException(status_code=403, detail=f'Нужно право: {perm}')
+            return user
+        return _dep
 
     def get_history() -> HistoryStorage:
         nonlocal _history_storage
@@ -219,6 +288,7 @@ def create_app(
         h = request_or_ws.headers.get('authorization', '')
         if h.lower().startswith('basic '):
             import base64
+
             try:
                 raw = base64.b64decode(h.split(' ', 1)[1]).decode('utf-8')
                 return raw.split(':', 1)[0] or 'anonymous'
@@ -263,14 +333,26 @@ def create_app(
             'parent_job_id': job.parent_job_id,
         }
 
+    def _ws_user(websocket: WebSocket) -> Optional[User]:
+        sid = websocket.cookies.get(session_cookie)
+        if sid:
+            u = auth_manager.user_by_session(sid)
+            if u:
+                return u
+        # Fallback: query-параметры user/pass (для CLI-инструментов)
+        q = websocket.query_params
+        if q.get('user') and q.get('pass'):
+            pair = auth_manager.authenticate(q['user'], q['pass'])
+            if pair:
+                return pair[0]
+        return None
+
     # ═══════════════════════════════════════════════════════════════
     #  HTML-СТРАНИЦЫ
     # ═══════════════════════════════════════════════════════════════
 
-    @app.get('/', response_class=HTMLResponse,
-             dependencies=[Depends(check_auth)])
-    def index(request: Request, status: Optional[str] = None,
-              q: Optional[str] = None):
+    @app.get('/', response_class=HTMLResponse, dependencies=[Depends(check_auth)])
+    def index(request: Request, status: Optional[str] = None, q: Optional[str] = None):
         storage = get_storage()
         try:
             jobs = storage.list(status=status or None, limit=200)
@@ -278,62 +360,120 @@ def create_app(
             jobs_dict = [job_to_dict(j) for j in jobs]
             if q:
                 jobs_dict = [
-                    j for j in jobs_dict
-                    if q.lower() in j['command'].lower()
-                    or q.lower() in str(j['args']).lower()
+                    j
+                    for j in jobs_dict
+                    if q.lower() in j['command'].lower() or q.lower() in str(j['args']).lower()
                 ]
         finally:
             storage.close()
 
-        return templates.TemplateResponse('index.html', {
-            'request': request,
-            'jobs': jobs_dict,
-            'stats': stats,
-            'filter_status': status,
-            'query': q or '',
-            'statuses': [
-                'pending', 'running', 'done', 'failed', 'canceled', 'timeout',
-            ],
-        })
+        return templates.TemplateResponse(
+            request=request,
+            name='index.html',
+            context={
+                'jobs': jobs_dict,
+                'stats': stats,
+                'filter_status': status,
+                'query': q or '',
+                'statuses': [
+                    'pending',
+                    'running',
+                    'done',
+                    'failed',
+                    'canceled',
+                    'timeout',
+                ],
+            },
+        )
 
-    @app.get('/jobs/{job_id}', response_class=HTMLResponse,
-             dependencies=[Depends(check_auth)])
+    @app.get('/login', response_class=HTMLResponse)
+    def login_page(request: Request, next: str = '/'):
+        user = _user_from_request(request)
+        if user:
+            return RedirectResponse(next or '/', status_code=303)
+        return templates.TemplateResponse(
+            request=request, name='login.html',
+            context={'next': next, 'error': None},
+        )
+
+    @app.post('/login')
+    async def login_submit(request: Request):
+        form = await request.form()
+        username = (form.get('username') or '').strip()
+        password = form.get('password') or ''
+        next_url = form.get('next') or '/'
+
+        pair = auth_manager.authenticate(
+            username, password,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get('user-agent'),
+        )
+        if not pair:
+            return templates.TemplateResponse(
+                request=request, name='login.html',
+                context={'next': next_url, 'error': 'Неверный логин или пароль'},
+                status_code=401,
+            )
+
+        user, sid = pair
+        resp = RedirectResponse(next_url or '/', status_code=303)
+        resp.set_cookie(
+            session_cookie, sid,
+            max_age=session_lifetime,
+            httponly=True,
+            secure=bool(config.get('webui.auth.cookie_secure', False)),
+            samesite='lax',
+        )
+        return resp
+
+    @app.get('/logout')
+    def logout(request: Request):
+        sid = _get_cookie(request)
+        if sid:
+            auth_manager.logout(sid)
+        resp = RedirectResponse('/login', status_code=303)
+        resp.delete_cookie(session_cookie)
+        return resp
+
+    @app.get('/jobs/{job_id}', response_class=HTMLResponse, dependencies=[Depends(check_auth)])
     def job_detail(request: Request, job_id: int):
         storage = get_storage()
         try:
             job = storage.get(job_id)
             if not job:
                 raise HTTPException(status_code=404, detail='Job not found')
-            children = [j for j in storage.list(limit=500)
-                        if j.parent_job_id == job_id]
+            children = [j for j in storage.list(limit=500) if j.parent_job_id == job_id]
             children_dict = [job_to_dict(j) for j in children]
         finally:
             storage.close()
 
-        return templates.TemplateResponse('job.html', {
-            'request': request,
-            'job': job_to_dict(job),
-            'children': children_dict,
-        })
+        return templates.TemplateResponse(
+            request=request,
+            name='job.html',
+            context={
+                'job': job_to_dict(job),
+                'children': children_dict,
+            },
+        )
 
-    @app.get('/history', response_class=HTMLResponse,
-             dependencies=[Depends(check_auth)])
-    def history_page(request: Request, command: Optional[str] = None,
-                     limit: int = 100):
+    @app.get('/history', response_class=HTMLResponse, dependencies=[Depends(check_auth)])
+    def history_page(request: Request, command: Optional[str] = None, limit: int = 100):
         storage = get_history()
         user = current_user(request)
         entries = storage.list(user=user, command=command, limit=limit)
         commands = storage.distinct_commands(user=user)
-        return templates.TemplateResponse('history.html', {
-            'request': request,
-            'entries': entries,
-            'commands': commands,
-            'selected_command': command or '',
-            'user': user,
-        })
+        return templates.TemplateResponse(
+            request=request,
+            name='history.html',
+            context={
+                'entries': entries,
+                'commands': commands,
+                'selected_command': command or '',
+                'user': user,
+            },
+        )
 
-    @app.get('/history/{entry_id}', response_class=HTMLResponse,
-             dependencies=[Depends(check_auth)])
+    @app.get('/history/{entry_id}', response_class=HTMLResponse, dependencies=[Depends(check_auth)])
     def history_detail(request: Request, entry_id: str):
         storage = get_history()
         entry = storage.get(entry_id)
@@ -341,19 +481,23 @@ def create_app(
             raise HTTPException(status_code=404)
         if entry.user != current_user(request):
             raise HTTPException(status_code=403)
-        return templates.TemplateResponse('history_detail.html', {
-            'request': request,
-            'entry': entry,
-        })
+        return templates.TemplateResponse(
+            request=request,
+            name='history_detail.html',
+            context={
+                'entry': entry,
+            },
+        )
 
-    @app.get('/logs', response_class=HTMLResponse,
-             dependencies=[Depends(check_auth)])
-    def logs_index(request: Request,
-                   command: Optional[str] = None,
-                   date_: Optional[str] = None,
-                   level: Optional[str] = None,
-                   grep: Optional[str] = None,
-                   limit: int = 500):
+    @app.get('/logs', response_class=HTMLResponse, dependencies=[Depends(check_auth)])
+    def logs_index(
+        request: Request,
+        command: Optional[str] = None,
+        date_: Optional[str] = None,
+        level: Optional[str] = None,
+        grep: Optional[str] = None,
+        limit: int = 500,
+    ):
         files = logs_reader.list_files()
         commands = logs_reader.list_commands()
         entries = []
@@ -368,47 +512,61 @@ def create_app(
         if target_command and target_date:
             try:
                 entries = logs_reader.read(
-                    target_command, target_date,
-                    level=level, grep=grep, limit=limit,
+                    target_command,
+                    target_date,
+                    level=level,
+                    grep=grep,
+                    limit=limit,
                 )
             except Exception:
                 entries = []
 
-        return templates.TemplateResponse('logs.html', {
-            'request': request,
-            'files': files,
-            'commands': commands,
-            'entries': entries,
-            'selected_command': target_command,
-            'selected_date': target_date,
-            'selected_level': level or '',
-            'grep': grep or '',
-            'limit': limit,
-        })
+        return templates.TemplateResponse(
+            request=request,
+            name='logs.html',
+            context={
+                'files': files,
+                'commands': commands,
+                'entries': entries,
+                'selected_command': target_command,
+                'selected_date': target_date,
+                'selected_level': level or '',
+                'grep': grep or '',
+                'limit': limit,
+            },
+        )
 
-    @app.get('/console', response_class=HTMLResponse,
-             dependencies=[Depends(check_auth)])
+    @app.get('/console', response_class=HTMLResponse, dependencies=[Depends(check_auth)])
     def console_page(request: Request):
         from lib.command_loader import CommandLoader
+
         loader = CommandLoader(root_dir / 'commands')
         commands = list(loader.load_commands().keys())
         try:
             from lib.commands import BUILTIN_COMMANDS
+
             commands += list(BUILTIN_COMMANDS.keys())
         except Exception:
             pass
-        return templates.TemplateResponse('console.html', {
-            'request': request,
-            'commands': sorted(set(commands)),
-        })
+        return templates.TemplateResponse(
+            request=request,
+            name='console.html',
+            context={
+                'commands': sorted(set(commands)),
+            },
+        )
 
     # ═══════════════════════════════════════════════════════════════
     #  API: ЗАДАЧИ
     # ═══════════════════════════════════════════════════════════════
 
-    @app.get('/api/stats', response_model=StatsSchema, tags=['stats'],
-             summary='Статистика очереди',
-             dependencies=[Depends(check_auth)])
+    @app.get(
+        '/api/stats',
+        response_model=StatsSchema,
+        tags=['stats'],
+        summary='Статистика очереди',
+        dependencies=[Depends(check_auth)],
+    )
     def api_stats():
         storage = get_storage()
         try:
@@ -416,9 +574,13 @@ def create_app(
         finally:
             storage.close()
 
-    @app.get('/api/jobs', response_model=list[JobSchema], tags=['jobs'],
-             summary='Список задач',
-             dependencies=[Depends(check_auth)])
+    @app.get(
+        '/api/jobs',
+        response_model=list[JobSchema],
+        tags=['jobs'],
+        summary='Список задач',
+        dependencies=[Depends(check_auth)],
+    )
     def api_jobs(
         status: Optional[str] = Query(
             None,
@@ -434,11 +596,14 @@ def create_app(
         finally:
             storage.close()
 
-    @app.get('/api/jobs/{job_id}', response_model=JobSchema, tags=['jobs'],
-             summary='Детали задачи',
-             responses={404: {'model': ErrorResponse,
-                              'description': 'Задача не найдена'}},
-             dependencies=[Depends(check_auth)])
+    @app.get(
+        '/api/jobs/{job_id}',
+        response_model=JobSchema,
+        tags=['jobs'],
+        summary='Детали задачи',
+        responses={404: {'model': ErrorResponse, 'description': 'Задача не найдена'}},
+        dependencies=[Depends(check_auth)],
+    )
     def api_job(job_id: int = FPath(..., ge=1)):
         storage = get_storage()
         try:
@@ -453,9 +618,13 @@ def create_app(
     #  API: ДЕЙСТВИЯ
     # ═══════════════════════════════════════════════════════════════
 
-    @app.post('/api/jobs/{job_id}/cancel', response_model=JobSchema,
-              tags=['actions'], summary='Отменить задачу',
-              dependencies=[Depends(check_auth)])
+    @app.post(
+        '/api/jobs/{job_id}/cancel',
+        response_model=JobSchema,
+        tags=['actions'],
+        summary='Отменить задачу',
+        dependencies=[Depends(check_auth)],
+    )
     def api_cancel(
         job_id: int = FPath(..., ge=1),
         cascade: bool = Query(True, description='Отменять ли дочерние задачи'),
@@ -472,17 +641,20 @@ def create_app(
         finally:
             storage.close()
 
-    @app.post('/api/jobs/{job_id}/retry', response_model=JobSchema,
-              tags=['actions'], summary='Перепоставить задачу',
-              dependencies=[Depends(check_auth)])
+    @app.post(
+        '/api/jobs/{job_id}/retry',
+        response_model=JobSchema,
+        tags=['actions'],
+        summary='Перепоставить задачу',
+        dependencies=[Depends(check_auth)],
+    )
     def api_retry(job_id: int = FPath(..., ge=1)):
         storage = get_storage()
         try:
             job = storage.get(job_id)
             if not job:
                 raise HTTPException(status_code=404, detail='Job not found')
-            if job.status not in (JobStatus.FAILED, JobStatus.TIMEOUT,
-                                  JobStatus.CANCELED):
+            if job.status not in (JobStatus.FAILED, JobStatus.TIMEOUT, JobStatus.CANCELED):
                 raise HTTPException(
                     status_code=400,
                     detail=f'Job в статусе {job.status} — retry не применим',
@@ -492,11 +664,14 @@ def create_app(
         finally:
             storage.close()
 
-    @app.post('/api/jobs/purge', response_model=PurgeResponse,
-              tags=['actions'], summary='Удалить завершённые',
-              dependencies=[Depends(check_auth)])
-    def api_purge(older: int = Query(86400, ge=0,
-                                     description='Возраст в секундах')):
+    @app.post(
+        '/api/jobs/purge',
+        response_model=PurgeResponse,
+        tags=['actions'],
+        summary='Удалить завершённые',
+        dependencies=[Depends(check_auth)],
+    )
+    def api_purge(older: int = Query(86400, ge=0, description='Возраст в секундах')):
         storage = get_storage()
         try:
             return {'purged': storage.purge(older_than_seconds=older)}
@@ -511,8 +686,7 @@ def create_app(
         try:
             n = storage.cancel(job_id, cascade=cascade)
             if n == 0:
-                raise HTTPException(status_code=400,
-                                    detail='Не удалось отменить')
+                raise HTTPException(status_code=400, detail='Не удалось отменить')
             return RedirectResponse(f'/jobs/{job_id}', status_code=303)
         finally:
             storage.close()
@@ -524,10 +698,8 @@ def create_app(
             job = storage.get(job_id)
             if not job:
                 raise HTTPException(status_code=404)
-            if job.status not in (JobStatus.FAILED, JobStatus.TIMEOUT,
-                                  JobStatus.CANCELED):
-                raise HTTPException(status_code=400,
-                                    detail=f'Job в статусе {job.status}')
+            if job.status not in (JobStatus.FAILED, JobStatus.TIMEOUT, JobStatus.CANCELED):
+                raise HTTPException(status_code=400, detail=f'Job в статусе {job.status}')
             storage.retry(job_id)
             return RedirectResponse(f'/jobs/{job_id}', status_code=303)
         finally:
@@ -546,14 +718,12 @@ def create_app(
     # ═══════════════════════════════════════════════════════════════
 
     @app.get('/api/history', dependencies=[Depends(check_auth)])
-    def api_history(request: Request,
-                    command: Optional[str] = None,
-                    limit: int = 100,
-                    offset: int = 0):
+    def api_history(
+        request: Request, command: Optional[str] = None, limit: int = 100, offset: int = 0
+    ):
         storage = get_history()
         user = current_user(request)
-        entries = storage.list(user=user, command=command,
-                               limit=limit, offset=offset)
+        entries = storage.list(user=user, command=command, limit=limit, offset=offset)
         return [
             {
                 'id': e.id,
@@ -624,12 +794,14 @@ def create_app(
         ]
 
     @app.get('/api/logs', dependencies=[Depends(check_auth)])
-    def api_logs(command: str, date_: str,
-                 level: Optional[str] = None,
-                 grep: Optional[str] = None,
-                 limit: int = 500):
-        entries = logs_reader.read(command, date_, level=level,
-                                   grep=grep, limit=limit)
+    def api_logs(
+        command: str,
+        date_: str,
+        level: Optional[str] = None,
+        grep: Optional[str] = None,
+        limit: int = 500,
+    ):
+        entries = logs_reader.read(command, date_, level=level, grep=grep, limit=limit)
         return [
             {
                 'ts': e.ts.isoformat() if e.ts else None,
@@ -652,8 +824,9 @@ def create_app(
         import csv
         import io
 
-        entries = logs_reader.read(command, date_, level=level, grep=grep,
-                                   limit=10_000_000, tail=False)
+        entries = logs_reader.read(
+            command, date_, level=level, grep=grep, limit=10_000_000, tail=False
+        )
 
         base_name = f"{command}_{date_}"
         if level:
@@ -664,8 +837,7 @@ def create_app(
         if format == 'log':
             path = logs_reader.logs_dir / f"{command}_{date_}.log"
             if not path.exists():
-                raise HTTPException(status_code=404,
-                                    detail='Log file not found')
+                raise HTTPException(status_code=404, detail='Log file not found')
             return FileResponse(
                 str(path),
                 media_type='text/plain; charset=utf-8',
@@ -674,40 +846,48 @@ def create_app(
 
         if format == 'json':
             body = json.dumps(
-                [{
-                    'ts': e.ts.isoformat() if e.ts else None,
-                    'level': e.level,
-                    'command': e.command,
-                    'message': e.message,
-                    'extra': e.extra,
-                } for e in entries],
-                ensure_ascii=False, indent=2,
+                [
+                    {
+                        'ts': e.ts.isoformat() if e.ts else None,
+                        'level': e.level,
+                        'command': e.command,
+                        'message': e.message,
+                        'extra': e.extra,
+                    }
+                    for e in entries
+                ],
+                ensure_ascii=False,
+                indent=2,
             )
             return Response(
                 content=body,
                 media_type='application/json; charset=utf-8',
                 headers={
-                    'Content-Disposition':
-                        f'attachment; filename="{base_name}.json"',
+                    'Content-Disposition': f'attachment; filename="{base_name}.json"',
                 },
             )
 
         if format == 'jsonl':
             buf = io.StringIO()
             for e in entries:
-                buf.write(json.dumps({
-                    'ts': e.ts.isoformat() if e.ts else None,
-                    'level': e.level,
-                    'command': e.command,
-                    'message': e.message,
-                    'extra': e.extra,
-                }, ensure_ascii=False) + '\n')
+                buf.write(
+                    json.dumps(
+                        {
+                            'ts': e.ts.isoformat() if e.ts else None,
+                            'level': e.level,
+                            'command': e.command,
+                            'message': e.message,
+                            'extra': e.extra,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + '\n'
+                )
             return Response(
                 content=buf.getvalue(),
                 media_type='application/x-ndjson; charset=utf-8',
                 headers={
-                    'Content-Disposition':
-                        f'attachment; filename="{base_name}.jsonl"',
+                    'Content-Disposition': f'attachment; filename="{base_name}.jsonl"',
                 },
             )
 
@@ -716,23 +896,23 @@ def create_app(
             writer = csv.writer(buf)
             writer.writerow(['ts', 'level', 'command', 'message'])
             for e in entries:
-                writer.writerow([
-                    e.ts.isoformat() if e.ts else '',
-                    e.level,
-                    e.command,
-                    e.message,
-                ])
+                writer.writerow(
+                    [
+                        e.ts.isoformat() if e.ts else '',
+                        e.level,
+                        e.command,
+                        e.message,
+                    ]
+                )
             return Response(
                 content=buf.getvalue(),
                 media_type='text/csv; charset=utf-8',
                 headers={
-                    'Content-Disposition':
-                        f'attachment; filename="{base_name}.csv"',
+                    'Content-Disposition': f'attachment; filename="{base_name}.csv"',
                 },
             )
 
-        raise HTTPException(status_code=400,
-                            detail='format: log|json|jsonl|csv')
+        raise HTTPException(status_code=400, detail='format: log|json|jsonl|csv')
 
     @app.get('/api/logs/bundle', dependencies=[Depends(check_auth)])
     def download_logs_bundle(
@@ -751,8 +931,7 @@ def create_app(
             targets = [f for f in targets if f.command == command]
 
         if not targets:
-            raise HTTPException(status_code=404,
-                                detail='Нет файлов для экспорта')
+            raise HTTPException(status_code=404, detail='Нет файлов для экспорта')
 
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -761,23 +940,38 @@ def create_app(
                     zf.write(f.path, arcname=f.path.name)
                 else:
                     entries = logs_reader.read(
-                        f.command, f.date, level=level,
-                        grep=grep, tail=False,
+                        f.command,
+                        f.date,
+                        level=level,
+                        grep=grep,
+                        tail=False,
                     )
                     if format == 'json':
-                        data = json.dumps([{
-                            'ts': e.ts.isoformat() if e.ts else None,
-                            'level': e.level,
-                            'message': e.message,
-                        } for e in entries],
-                            ensure_ascii=False, indent=2)
+                        data = json.dumps(
+                            [
+                                {
+                                    'ts': e.ts.isoformat() if e.ts else None,
+                                    'level': e.level,
+                                    'message': e.message,
+                                }
+                                for e in entries
+                            ],
+                            ensure_ascii=False,
+                            indent=2,
+                        )
                         zf.writestr(f"{f.command}_{f.date.isoformat()}.json", data)
                     elif format == 'jsonl':
-                        lines = '\n'.join(json.dumps({
-                            'ts': e.ts.isoformat() if e.ts else None,
-                            'level': e.level,
-                            'message': e.message,
-                        }, ensure_ascii=False) for e in entries)
+                        lines = '\n'.join(
+                            json.dumps(
+                                {
+                                    'ts': e.ts.isoformat() if e.ts else None,
+                                    'level': e.level,
+                                    'message': e.message,
+                                },
+                                ensure_ascii=False,
+                            )
+                            for e in entries
+                        )
                         zf.writestr(f"{f.command}_{f.date.isoformat()}.jsonl", lines)
 
         buf.seek(0)
@@ -798,11 +992,13 @@ def create_app(
 
     @app.websocket('/ws')
     async def ws_endpoint(websocket: WebSocket):
-        if auth is not None:
-            q = websocket.query_params
-            if (q.get('user'), q.get('pass')) != auth:
-                await websocket.close(code=4401, reason='Unauthorized')
-                return
+        user = _ws_user(websocket)
+        if not user:
+            await websocket.close(code=4401, reason='Unauthorized')
+            return
+        if not user.has_perm(PERM_LOGS_VIEW):
+            await websocket.close(code=4403, reason='Forbidden')
+            return
 
         await hub.subscribe(websocket)
         try:
@@ -811,9 +1007,7 @@ def create_app(
                 stats = storage.stats()
             finally:
                 storage.close()
-            await websocket.send_json(
-                {'type': 'stats.updated', 'stats': stats}
-            )
+            await websocket.send_json({'type': 'stats.updated', 'stats': stats})
             while True:
                 msg = await websocket.receive_text()
                 if msg == 'ping':
@@ -824,8 +1018,7 @@ def create_app(
             await hub.unsubscribe(websocket)
 
     @app.websocket('/ws/logs')
-    async def ws_logs(websocket: WebSocket, command: str,
-                      date_: Optional[str] = None):
+    async def ws_logs(websocket: WebSocket, command: str, date_: Optional[str] = None):
         if auth is not None:
             q = websocket.query_params
             if (q.get('user'), q.get('pass')) != auth:
@@ -838,11 +1031,13 @@ def create_app(
         try:
             initial = logs_reader.read(command, target_date, limit=200)
             for e in initial:
-                await websocket.send_json({
-                    'ts': e.ts.isoformat() if e.ts else None,
-                    'level': e.level,
-                    'message': e.message,
-                })
+                await websocket.send_json(
+                    {
+                        'ts': e.ts.isoformat() if e.ts else None,
+                        'level': e.level,
+                        'message': e.message,
+                    }
+                )
 
             path = logs_reader.logs_dir / f"{command}_{target_date}.log"
             offset = path.stat().st_size if path.exists() else 0
@@ -855,18 +1050,22 @@ def create_app(
                     offset = 0
 
                 new_offset, lines = logs_reader.tail_lines(
-                    command, target_date, offset,
+                    command,
+                    target_date,
+                    offset,
                 )
                 if new_offset != offset:
                     offset = new_offset
                     for line in lines:
                         entry = logs_reader._parse_line(line, command)
                         if entry:
-                            await websocket.send_json({
-                                'ts': entry.ts.isoformat() if entry.ts else None,
-                                'level': entry.level,
-                                'message': entry.message,
-                            })
+                            await websocket.send_json(
+                                {
+                                    'ts': entry.ts.isoformat() if entry.ts else None,
+                                    'level': entry.level,
+                                    'message': entry.message,
+                                }
+                            )
         except WebSocketDisconnect:
             pass
         except Exception as e:
@@ -895,15 +1094,13 @@ def create_app(
         args = init.get('args') or {}
 
         if not command:
-            await websocket.send_json({'type': 'error',
-                                       'message': 'command обязателен'})
+            await websocket.send_json({'type': 'error', 'message': 'command обязателен'})
             await websocket.close()
             return
 
         allow = config.get('webui.console.allow_commands') or []
         if allow and command not in allow:
-            await websocket.send_json({'type': 'error',
-                                       'message': 'Команда запрещена'})
+            await websocket.send_json({'type': 'error', 'message': 'Команда запрещена'})
             await websocket.close()
             return
 
@@ -913,6 +1110,7 @@ def create_app(
             cmd_logger = logger
         else:
             from lib.logger import Logger
+
             cmd_logger = Logger(config, root_dir / 'logs')
 
         session = ConsoleSession(
@@ -955,8 +1153,7 @@ def create_app(
 
                 t = data.get('type')
                 if t == 'input_response':
-                    session.send_input(data.get('id', ''),
-                                       data.get('value', ''))
+                    session.send_input(data.get('id', ''), data.get('value', ''))
                 elif t == 'signal' and data.get('signal') == 'SIGINT':
                     session.stop()
         except WebSocketDisconnect:
@@ -969,8 +1166,12 @@ def create_app(
     #  СЛУЖЕБНЫЕ
     # ═══════════════════════════════════════════════════════════════
 
-    @app.get('/healthz', response_model=HealthSchema, tags=['system'],
-             summary='Проверка работоспособности')
+    @app.get(
+        '/healthz',
+        response_model=HealthSchema,
+        tags=['system'],
+        summary='Проверка работоспособности',
+    )
     def healthz():
         try:
             storage = get_storage()
@@ -978,18 +1179,20 @@ def create_app(
             storage.close()
             return {'ok': True}
         except Exception as e:
-            return JSONResponse({'ok': False, 'error': str(e)},
-                                status_code=503)
+            return JSONResponse({'ok': False, 'error': str(e)}, status_code=503)
 
-    @app.get('/metrics', tags=['system'], summary='Prometheus-метрики',
-             response_class=Response,
-             responses={200: {'content': {'text/plain': {}}}})
+    @app.get(
+        '/metrics',
+        tags=['system'],
+        summary='Prometheus-метрики',
+        response_class=Response,
+        responses={200: {'content': {'text/plain': {}}}},
+    )
     def metrics():
         try:
             from lib.metrics import metrics_endpoint
         except ImportError:
-            return Response(content=b'# metrics module not available\n',
-                            media_type='text/plain')
+            return Response(content=b'# metrics module not available\n', media_type='text/plain')
         body, ctype = metrics_endpoint()
         return Response(content=body, media_type=ctype)
 
@@ -1015,33 +1218,42 @@ def create_app(
 
                     for j in jobs:
                         if j.id not in last_snapshot:
-                            await hub.broadcast({
-                                'type': 'job.created',
-                                'job': job_to_dict(j),
-                            })
+                            await hub.broadcast(
+                                {
+                                    'type': 'job.created',
+                                    'job': job_to_dict(j),
+                                }
+                            )
                         elif last_snapshot[j.id] != j.status:
-                            await hub.broadcast({
-                                'type': 'job.updated',
-                                'job': job_to_dict(j),
-                            })
+                            await hub.broadcast(
+                                {
+                                    'type': 'job.updated',
+                                    'job': job_to_dict(j),
+                                }
+                            )
 
                     for jid in set(last_snapshot) - set(current):
-                        await hub.broadcast({
-                            'type': 'job.removed', 'job_id': jid,
-                        })
+                        await hub.broadcast(
+                            {
+                                'type': 'job.removed',
+                                'job_id': jid,
+                            }
+                        )
 
                     if stats != last_stats:
-                        await hub.broadcast({
-                            'type': 'stats.updated', 'stats': stats,
-                        })
+                        await hub.broadcast(
+                            {
+                                'type': 'stats.updated',
+                                'stats': stats,
+                            }
+                        )
                         last_stats = stats
 
                     last_snapshot = current
                 except Exception as e:
                     if logger is not None:
                         try:
-                            logger.warning(f"publisher error: {e}",
-                                           command='webui')
+                            logger.warning(f"publisher error: {e}", command='webui')
                         except Exception:
                             pass
 
@@ -1076,13 +1288,12 @@ def create_app(
             tags=TAGS_METADATA,
         )
         schema['servers'] = [
-            {'url': config.get('webui.public_url', '/'),
-             'description': 'Текущий сервер'},
+            {'url': config.get('webui.public_url', '/'), 'description': 'Текущий сервер'},
         ]
         if auth is not None:
-            schema.setdefault('components', {}) \
-                  .setdefault('securitySchemes', {})['BasicAuth'] = {
-                'type': 'http', 'scheme': 'basic',
+            schema.setdefault('components', {}).setdefault('securitySchemes', {})['BasicAuth'] = {
+                'type': 'http',
+                'scheme': 'basic',
             }
             schema['security'] = [{'BasicAuth': []}]
         app.openapi_schema = schema
@@ -1102,8 +1313,9 @@ def create_app(
 
         i18n.set_locale(locale)
         response = await call_next(request)
-        response.set_cookie('homer_locale', locale, max_age=365 * 86400,
-                            httponly=False, samesite='lax')
+        response.set_cookie(
+            'homer_locale', locale, max_age=365 * 86400, httponly=False, samesite='lax'
+        )
         return response
 
     def _parse_accept_language(header: str) -> Optional[str]:

@@ -1,7 +1,7 @@
 from .base import BaseStorage, Task
-from .storage import DBStorage
 from .cron import CronExpression
 from .runner import Scheduler
+from .storage import DBStorage
 
 
 def create_storage(config, db=None):
@@ -15,5 +15,11 @@ def create_storage(config, db=None):
     return DBStorage(config, db=db)
 
 
-__all__ = ['BaseStorage', 'Task', 'Scheduler', 'DBStorage',
-           'CronExpression', 'create_storage']
+__all__ = [
+    'BaseStorage',
+    'CronExpression',
+    'DBStorage',
+    'Scheduler',
+    'Task',
+    'create_storage',
+]

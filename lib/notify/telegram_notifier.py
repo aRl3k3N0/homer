@@ -2,6 +2,7 @@
 Telegram-нотификатор через Bot API.
 Использует requests (если установлен). Иначе — urllib.
 """
+
 import json
 
 from .base import BaseNotifier, NotifyEvent
@@ -14,9 +15,7 @@ class TelegramNotifier(BaseNotifier):
         super().__init__(config)
         cfg = config.get('notifications.telegram', {}) or {}
         self.bot_token = cfg.get('bot_token')
-        self.chat_ids = cfg.get('chat_ids') or (
-            [cfg['chat_id']] if cfg.get('chat_id') else []
-        )
+        self.chat_ids = cfg.get('chat_ids') or ([cfg['chat_id']] if cfg.get('chat_id') else [])
         self.on = cfg.get('on', ['failed', 'timeout', 'canceled'])
         self.parse_mode = cfg.get('parse_mode', 'HTML')
         self._base_url = f"https://api.telegram.org/bot{self.bot_token}"
@@ -24,14 +23,17 @@ class TelegramNotifier(BaseNotifier):
     def _http_post(self, url, payload):
         try:
             import requests
+
             r = requests.post(url, json=payload, timeout=10)
             r.raise_for_status()
             return r.json()
         except ImportError:
             import urllib.request
+
             data = json.dumps(payload).encode('utf-8')
             req = urllib.request.Request(
-                url, data=data,
+                url,
+                data=data,
                 headers={'Content-Type': 'application/json'},
             )
             with urllib.request.urlopen(req, timeout=10) as resp:

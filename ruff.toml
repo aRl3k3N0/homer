@@ -32,10 +32,18 @@ ignore = [
     "PLR0911", # слишком много return — иногда ок
     "PLR0912", # слишком много ветвлений — иногда ок
     "PLR0913", # слишком много аргументов — иногда ок
+    "PLR0917", # many positional parameters are part of existing public APIs
     "PLR0915", # слишком много statements — иногда ок
     "PLR2004", # magic value — иногда удобно
     "B008",   # function call in default — нужно для DI
     "SIM108", # ternary — читаемость важнее
+    "PLC0415", # local imports preserve optional dependencies and avoid cycles
+    "PLW0603", # module-level registries intentionally use process-wide state
+    "UP045",   # keep compatibility with the declared Python 3.9 minimum
+    "UP007",   # keep compatibility with the declared Python 3.9 minimum
+    "RUF001",  # Cyrillic is intentional in user-facing Russian text
+    "RUF002",  # Cyrillic is intentional in Russian docstrings
+    "RUF003",  # Cyrillic is intentional in Russian comments
 ]
 
 [lint.per-file-ignores]

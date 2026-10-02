@@ -8,6 +8,7 @@ Microsoft Teams — Incoming Webhook с MessageCard.
     color_fail: "e74c3c"
     theme_color: "0078D4"
 """
+
 import json
 
 from .base import BaseNotifier, NotifyEvent
@@ -27,14 +28,17 @@ class TeamsNotifier(BaseNotifier):
     def _http_post(self, url, payload):
         try:
             import requests
+
             r = requests.post(url, json=payload, timeout=10)
             r.raise_for_status()
             return r.text
         except ImportError:
             import urllib.request
+
             data = json.dumps(payload).encode('utf-8')
             req = urllib.request.Request(
-                url, data=data,
+                url,
+                data=data,
                 headers={'Content-Type': 'application/json'},
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -59,23 +63,26 @@ class TeamsNotifier(BaseNotifier):
         if event.args:
             facts.append({'name': 'Аргументы', 'value': str(event.args)})
         if event.duration_sec is not None:
-            facts.append({'name': 'Длительность',
-                          'value': f"{round(event.duration_sec, 2)}с"})
+            facts.append({'name': 'Длительность', 'value': f"{round(event.duration_sec, 2)}с"})
         if event.triggered_by:
             facts.append({'name': 'Источник', 'value': event.triggered_by})
 
-        sections = [{
-            'activityTitle': f"{icon} Job #{event.job_id}",
-            'activitySubtitle': event.command,
-            'facts': facts,
-            'markdown': True,
-        }]
+        sections = [
+            {
+                'activityTitle': f"{icon} Job #{event.job_id}",
+                'activitySubtitle': event.command,
+                'facts': facts,
+                'markdown': True,
+            }
+        ]
 
         if event.error:
-            sections.append({
-                'title': 'Ошибка',
-                'text': f"```\n{(event.error or '')[:1500]}\n```",
-            })
+            sections.append(
+                {
+                    'title': 'Ошибка',
+                    'text': f"```\n{(event.error or '')[:1500]}\n```",
+                }
+            )
 
         payload = {
             '@type': 'MessageCard',

@@ -1,6 +1,7 @@
 """
 Pydantic-схемы для OpenAPI.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,11 +13,9 @@ from pydantic import BaseModel, Field
 class JobSchema(BaseModel):
     id: int = Field(..., description='ID задачи')
     command: str = Field(..., description='Имя команды Homer')
-    args: dict[str, Any] = Field(default_factory=dict,
-                                 description='Аргументы команды')
+    args: dict[str, Any] = Field(default_factory=dict, description='Аргументы команды')
     priority: int = Field(0, description='Приоритет (больше = важнее)')
-    status: str = Field(..., description='Статус: pending|running|done|failed|'
-                                          'canceled|timeout')
+    status: str = Field(..., description='Статус: pending|running|done|failed|canceled|timeout')
     attempts: int = Field(0, description='Сделано попыток')
     max_attempts: int = Field(3, description='Максимум попыток')
     retry_delay: int = Field(60, description='Пауза между попытками, сек')

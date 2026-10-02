@@ -1,7 +1,8 @@
 """Тесты QueueStorage."""
+
 from datetime import datetime, timedelta
 
-from lib.queue import QueueJob, JobStatus
+from lib.queue import JobStatus, QueueJob
 
 
 def test_push_and_get(sqlite_storage):
@@ -32,6 +33,7 @@ def test_finish_and_retry(sqlite_storage):
     sqlite_storage.push(QueueJob(command='x', max_attempts=3, retry_delay=0))
     job = sqlite_storage.acquire_next(60)
     assert job.attempts == 1
+    assert job.retry_delay == 0
 
     sqlite_storage.finish(job.id, job.run_id, JobStatus.FAILED, error='boom')
     again = sqlite_storage.get(job.id)
@@ -73,6 +75,16 @@ def test_cancel_no_cascade(sqlite_storage):
     sqlite_storage.cancel(parent_id, cascade=False)
     assert sqlite_storage.get(parent_id).status == JobStatus.CANCELED
     assert sqlite_storage.get(child_id).status == JobStatus.PENDING
+
+
+def test_cancel_running_job_requests_cooperative_cancel(sqlite_storage):
+    job_id = sqlite_storage.push(QueueJob(command='running'))
+    job = sqlite_storage.acquire_next(lease_seconds=60)
+
+    assert job.id == job_id
+    assert sqlite_storage.cancel(job_id, cascade=False) == 0
+    assert sqlite_storage.get(job_id).status == JobStatus.RUNNING
+    assert sqlite_storage.is_cancel_requested(job_id)
 
 
 def test_retry(sqlite_storage):

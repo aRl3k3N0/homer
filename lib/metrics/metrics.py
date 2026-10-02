@@ -14,18 +14,24 @@
     homer_db_queries_total{driver,op}
     homer_errors_total{source}
 """
+
 from __future__ import annotations
 
-import time
 import logging
 
 _log = logging.getLogger('homer.metrics')
 
 try:
     from prometheus_client import (
-        Counter, Gauge, Histogram, CollectorRegistry,
-        generate_latest, CONTENT_TYPE_LATEST, start_http_server,
+        CONTENT_TYPE_LATEST,
+        CollectorRegistry,
+        Counter,
+        Gauge,
+        Histogram,
+        generate_latest,
+        start_http_server,
     )
+
     _HAS_PROM = True
 except ImportError:
     _HAS_PROM = False
@@ -35,14 +41,27 @@ except ImportError:
 
 class _Noop:
     """Заглушка для окружений без prometheus_client."""
-    def labels(self, *_, **__): return self
-    def inc(self, *_, **__): pass
-    def set(self, *_, **__): pass
-    def observe(self, *_, **__): pass
+
+    def labels(self, *_, **__):
+        return self
+
+    def inc(self, *_, **__):
+        pass
+
+    def set(self, *_, **__):
+        pass
+
+    def observe(self, *_, **__):
+        pass
+
     def time(self):
         class _T:
-            def __enter__(self): return self
-            def __exit__(self, *a): pass
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
         return _T()
 
 
@@ -130,6 +149,38 @@ class MetricsRegistry:
             registry=self.registry,
         )
 
+        self.i18n_cache_size = Gauge(
+            'homer_i18n_cache_size',
+            'Текущий размер LRU-кэша i18n',
+            registry=self.registry,
+        )
+        self.i18n_cache_hits = Counter(
+            'homer_i18n_cache_hits_total',
+            'Попадания в кэш i18n',
+            registry=self.registry,
+        )
+        self.i18n_cache_misses = Counter(
+            'homer_i18n_cache_misses_total',
+            'Промахи кэша i18n',
+            registry=self.registry,
+        )
+        self.i18n_missing_keys = Gauge(
+            'homer_i18n_missing_keys',
+            'Уникальных отсутствующих ключей i18n',
+            registry=self.registry,
+        )
+        self.i18n_locales = Gauge(
+            'homer_i18n_locales',
+            'Количество загруженных локалей',
+            registry=self.registry,
+        )
+        self.i18n_translations = Gauge(
+            'homer_i18n_translations',
+            'Число переводов (по локалям)',
+            ['locale'],
+            registry=self.registry,
+        )
+
 
 _REGISTRY: MetricsRegistry | None = None
 
@@ -142,6 +193,7 @@ def get_metrics() -> MetricsRegistry:
 
 
 # ─────────── Удобные функции ───────────
+
 
 def observe_job(job, status: str | None = None, duration: float | None = None):
     """Зафиксировать метрики по завершённому job-у."""

@@ -1,4 +1,5 @@
 """Тесты ArgumentParser."""
+
 from lib.arguments import ArgumentParser
 
 

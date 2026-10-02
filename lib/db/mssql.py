@@ -15,6 +15,7 @@
     encrypt: yes|no|strict
     trust_server_certificate: yes|no
 """
+
 from __future__ import annotations
 
 from .base import BaseDB, DBError
@@ -66,7 +67,9 @@ class MSSQLDB(BaseDB):
 
         conn_str = ';'.join(parts)
         try:
-            return pyodbc.connect(conn_str, autocommit=False, timeout=cfg.get('connect_timeout', 10))
+            return pyodbc.connect(
+                conn_str, autocommit=False, timeout=cfg.get('connect_timeout', 10)
+            )
         except Exception as e:
             raise DBError(f"MS SQL (pyodbc) ошибка подключения: {e}") from e
 
@@ -75,8 +78,7 @@ class MSSQLDB(BaseDB):
             import pymssql
         except ImportError as e:
             raise DBError(
-                "Установите pyodbc (рекомендуется) или pymssql для MS SQL: "
-                "pip install pyodbc"
+                "Установите pyodbc (рекомендуется) или pymssql для MS SQL: pip install pyodbc"
             ) from e
 
         cfg = self.config

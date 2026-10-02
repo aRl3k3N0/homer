@@ -1,4 +1,5 @@
 """Тесты Dispatcher (без воркеров — только push/call таймаут)."""
+
 import pytest
 
 from lib.queue import Dispatcher, QueueTimeout

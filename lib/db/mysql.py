@@ -4,6 +4,7 @@
 Устанавливает pymysql или mysql-connector-python.
 Приоритет — pymysql (чистый Python, без сборки).
 """
+
 from __future__ import annotations
 
 from .base import BaseDB, DBError
@@ -31,8 +32,7 @@ class MySQLDB(BaseDB):
             import pymysql
         except ImportError as e:
             raise DBError(
-                "Установите pymysql для работы с MySQL/MariaDB: "
-                "pip install pymysql"
+                "Установите pymysql для работы с MySQL/MariaDB: pip install pymysql"
             ) from e
 
         cfg = self.config
@@ -49,7 +49,6 @@ class MySQLDB(BaseDB):
         )
 
     def _make_cursor(self, dictionary: bool = False):
-        import pymysql.cursors
         # У нас соединение всегда с DictCursor — используем его
         return self.connection.cursor()
 

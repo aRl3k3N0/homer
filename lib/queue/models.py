@@ -1,10 +1,11 @@
 """
 Модели очереди задач.
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 import json
+from typing import Optional
 
 
 class JobStatus:
@@ -74,7 +75,7 @@ class QueueJob:
             triggered_by=d.get('triggered_by'),
             attempts=d.get('attempts', 0) or 0,
             max_attempts=d.get('max_attempts', 3) or 3,
-            retry_delay=d.get('retry_delay', 60) or 60,
+            retry_delay=(60 if d.get('retry_delay') is None else d['retry_delay']),
             last_attempt_at=_parse_dt(d.get('last_attempt_at')),
             cancel_requested=bool(d.get('cancel_requested', False)),
             timeout_sec=d.get('timeout_sec'),

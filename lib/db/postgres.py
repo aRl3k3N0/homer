@@ -1,6 +1,7 @@
 """
 Драйвер PostgreSQL.
 """
+
 from .base import BaseDB, DBError
 
 
@@ -46,5 +47,6 @@ class PostgresDB(BaseDB):
     def _make_cursor(self, dictionary=False):
         if dictionary:
             from psycopg2.extras import RealDictCursor
+
             return self.connection.cursor(cursor_factory=RealDictCursor)
         return self.connection.cursor()

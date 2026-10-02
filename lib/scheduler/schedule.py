@@ -1,9 +1,10 @@
 """
 Исполнитель задач планировщика.
 """
+
+from datetime import datetime
 import time
 import traceback
-from datetime import datetime, timedelta
 
 from lib.arguments import ArgumentParser
 
@@ -23,9 +24,11 @@ class Scheduler:
 
     def _install_sighup(self):
         import signal
+
         if not hasattr(signal, 'SIGHUP'):
             return
         try:
+
             def _on_hup(signum, frame):
                 self._reload_requested = True
                 self.logger.info("[scheduler] SIGHUP — запрошена перезагрузка плагинов")
@@ -39,7 +42,6 @@ class Scheduler:
 
     def run_task(self, task):
         """Выполняет одну задачу"""
-        from lib.scheduler.cron import CronExpression
 
         self.logger.info(f"[scheduler] Запуск задачи '{task.name}' -> {task.command}")
         self.storage.mark_running(task.id)
@@ -132,9 +134,11 @@ class Scheduler:
         try:
             from lib.plugins import get_manager
             from lib.plugins.reload import PluginReloader
+
             mgr = get_manager()
             reloader = PluginReloader(
-                mgr, root_dir=self.root_dir,
+                mgr,
+                root_dir=self.root_dir,
                 config=self.config,
                 homer_context={
                     'config': self.config,
@@ -149,5 +153,4 @@ class Scheduler:
                 else:
                     self.logger.error(f"[scheduler] Ошибка reload '{name}'")
         except Exception as e:
-            self.logger.error(f"[scheduler] reload плагинов: {e}",
-                              exc_info=True)
+            self.logger.error(f"[scheduler] reload плагинов: {e}", exc_info=True)

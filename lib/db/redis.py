@@ -6,6 +6,7 @@ Redis — key-value store.
     - Даём доступ к нативному клиенту через .client / делегирование.
     - Работает как кэш, очередь, pub/sub.
 """
+
 from __future__ import annotations
 
 from .base import BaseDB, DBError
@@ -32,9 +33,7 @@ class RedisDB(BaseDB):
         try:
             import redis
         except ImportError as e:
-            raise DBError(
-                "Установите redis: pip install redis"
-            ) from e
+            raise DBError("Установите redis: pip install redis") from e
 
         cfg = self.config
 

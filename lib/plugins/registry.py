@@ -9,16 +9,17 @@ Marketplace-реестр плагинов.
     - var/cache/plugins-registry.json
     - TTL из config.yml → plugins.registry_ttl (по умолчанию 3600 секунд)
 """
+
 from __future__ import annotations
 
-import json
-import time
-import urllib.request
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
+import time
 from typing import Optional
+import urllib.request
 
-from .deps import parse_version, _cmp_versions
+from .deps import parse_version
 
 
 class RegistryError(Exception):
@@ -60,8 +61,7 @@ class RegistryPlugin:
 
 
 class Registry:
-    def __init__(self, root_dir: Path, url_or_path: str,
-                 cache_ttl: int = 3600):
+    def __init__(self, root_dir: Path, url_or_path: str, cache_ttl: int = 3600):
         self.root = Path(root_dir)
         self.source = url_or_path
         self.cache_ttl = cache_ttl
@@ -77,9 +77,7 @@ class Registry:
         # Из кэша
         if not force_refresh and self._is_cache_fresh():
             try:
-                self._data = json.loads(
-                    self.cache_path.read_text(encoding='utf-8')
-                )
+                self._data = json.loads(self.cache_path.read_text(encoding='utf-8'))
                 return self._data
             except Exception:
                 pass
@@ -135,8 +133,9 @@ class Registry:
 
     # ─────────── API ───────────
 
-    def list_plugins(self, tag: Optional[str] = None,
-                     search: Optional[str] = None) -> list[RegistryPlugin]:
+    def list_plugins(
+        self, tag: Optional[str] = None, search: Optional[str] = None
+    ) -> list[RegistryPlugin]:
         data = self.load()
         result = []
         for p in data.get('plugins', []):

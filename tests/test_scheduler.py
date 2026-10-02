@@ -1,16 +1,18 @@
 """Тесты Scheduler (создание job-ов из cron без реального запуска)."""
-from datetime import datetime
 
-from lib.scheduler import create_storage, CronExpression
 from lib.scheduler.base import Task
 
 
 def test_add_and_list(sqlite_scheduler_storage):
     storage = sqlite_scheduler_storage
-    tid = storage.add(Task(
-        name='t1', command='hello', cron='* * * * *',
-        args={'name': 'world'},
-    ))
+    tid = storage.add(
+        Task(
+            name='t1',
+            command='hello',
+            cron='* * * * *',
+            args={'name': 'world'},
+        )
+    )
     assert tid is not None
     tasks = storage.list()
     assert len(tasks) == 1

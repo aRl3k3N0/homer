@@ -16,20 +16,20 @@
     6. Опционально — включает в config.yml (plugins.enabled).
     7. Опционально — применяет миграции.
 """
+
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
+from logging import root
+from pathlib import Path
 import shutil
 import subprocess
 import tarfile
-import tempfile
+from typing import Optional
 import urllib.parse
 import urllib.request
 import zipfile
-from dataclasses import dataclass
-from logging import root
-from pathlib import Path
-from typing import Optional
 
 from lib import console
 
@@ -55,9 +55,19 @@ class PluginInstaller:
 
     # ─────────── Публичный API ───────────
 
-    def install(self, source, *, force=False, enable=False, migrate=False,
-                expected_name=None, expected_checksum=None,
-                verify=False, allow_unsigned=True, info=None) -> InstallResult:
+    def install(
+        self,
+        source,
+        *,
+        force=False,
+        enable=False,
+        migrate=False,
+        expected_name=None,
+        expected_checksum=None,
+        verify=False,
+        allow_unsigned=True,
+        info=None,
+    ) -> InstallResult:
         ...
         # После распаковки и определения info.name:
         if expected_checksum:
@@ -70,14 +80,13 @@ class PluginInstaller:
             actual = 'sha256:' + hashlib.sha256(archive.read_bytes()).hexdigest()
             if actual != expected_checksum:
                 raise InstallError(
-                    f"Checksum не совпадает:\n"
-                    f"  ожидался: {expected_checksum}\n"
-                    f"  получен:  {actual}"
+                    f"Checksum не совпадает:\n  ожидался: {expected_checksum}\n  получен:  {actual}"
                 )
 
         # Подпись (см. раздел «Signed plugins»)
         if verify:
-            from lib.plugins.signing import TrustStore, SignatureError
+            from lib.plugins.signing import SignatureError, TrustStore
+
             store = TrustStore(self.root, self.config)
             try:
                 sig = store.verify(root)
@@ -90,14 +99,11 @@ class PluginInstaller:
                 if not sig.valid:
                     raise InstallError(f"Подпись недействительна: {sig.error}")
                 if not sig.trusted:
-                    raise InstallError(
-                        f"Ключ '{sig.key_id}' не в списке доверенных"
-                    )
+                    raise InstallError(f"Ключ '{sig.key_id}' не в списке доверенных")
 
-    def uninstall(self, name: str, *,
-                  purge_data: bool = False,
-                  driver: Optional[str] = None,
-                  db=None) -> bool:
+    def uninstall(
+        self, name: str, *, purge_data: bool = False, driver: Optional[str] = None, db=None
+    ) -> bool:
         """
         Удаляет плагин из plugins/.
         Если purge_data=True и передан db — прогоняет uninstall.sql.
@@ -109,6 +115,7 @@ class PluginInstaller:
         if purge_data and db and driver:
             from lib.plugins.migrations import MigrationRunner
             from lib.plugins.plugin import PluginInfo
+
             info = PluginInfo.from_dir(target)
             runner = MigrationRunner(info, driver, db)
             runner.down_all()
@@ -149,7 +156,10 @@ class PluginInstaller:
         cmd = ['git', 'clone', '--depth=1', url, str(target)]
         try:
             proc = subprocess.run(
-                cmd, capture_output=True, timeout=180, text=True,
+                cmd,
+                capture_output=True,
+                timeout=180,
+                text=True,
             )
         except FileNotFoundError:
             raise InstallError("git не установлен")
@@ -157,9 +167,7 @@ class PluginInstaller:
             raise InstallError(f"git clone timed out: {url}")
 
         if proc.returncode != 0:
-            raise InstallError(
-                f"git clone {url}: {proc.stderr.strip()}"
-            )
+            raise InstallError(f"git clone {url}: {proc.stderr.strip()}")
 
         # Удаляем .git
         shutil.rmtree(target / '.git', ignore_errors=True)
@@ -177,9 +185,7 @@ class PluginInstaller:
                 with tarfile.open(archive) as t:
                     self._safe_extract_tar(t, dest_dir)
             else:
-                raise InstallError(
-                    f"Неподдерживаемый формат архива: {archive.name}"
-                )
+                raise InstallError(f"Неподдерживаемый формат архива: {archive.name}")
         except zipfile.BadZipFile as e:
             raise InstallError(f"Повреждённый zip: {e}") from e
         except tarfile.TarError as e:
@@ -216,8 +222,7 @@ class PluginInstaller:
         if (path / 'plugin.json').exists():
             return path
 
-        children = [c for c in path.iterdir()
-                    if c.is_dir() and not c.name.startswith(('.', '_'))]
+        children = [c for c in path.iterdir() if c.is_dir() and not c.name.startswith(('.', '_'))]
         if len(children) == 1:
             child = children[0]
             if (child / 'plugin.json').exists():
@@ -235,6 +240,7 @@ class PluginInstaller:
         if self.config is None:
             return
         import yaml
+
         cfg_path = self.root / 'config.yml'
         data = self.config.all()
         plugins_cfg = data.setdefault('plugins', {})
@@ -253,14 +259,14 @@ class PluginInstaller:
 
     def _run_migrations(self, plugin_name: str):
         from lib.db import connect
-        from lib.plugins.plugin import PluginInfo
         from lib.plugins.migrations import MigrationRunner
+        from lib.plugins.plugin import PluginInfo
 
         sched_cfg = (self.config.get('scheduler', {}) or {}) if self.config else {}
         driver = sched_cfg.get('storage', 'sqlite')
-        conn_cfg = (sched_cfg.get(driver)
-                    or (self.config.get(f'databases.{driver}')
-                        if self.config else None))
+        conn_cfg = sched_cfg.get(driver) or (
+            self.config.get(f'databases.{driver}') if self.config else None
+        )
         if driver == 'sqlite':
             if not conn_cfg:
                 conn_cfg = {'path': 'var/scheduler.db'}

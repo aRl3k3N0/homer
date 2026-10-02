@@ -1,22 +1,28 @@
 """Тесты нотификаторов."""
-import json
+
 from datetime import datetime
+import json
 
-import pytest
-
+from lib.notify import NotifyManager
 from lib.notify.base import NotifyEvent
 from lib.notify.file_notifier import FileNotifier
-from lib.notify import NotifyManager
 
 
 def _event(status='failed'):
     return NotifyEvent(
-        job_id=1, command='demo', args={'x': 1},
-        status=status, exit_code=1 if status != 'done' else 0,
+        job_id=1,
+        command='demo',
+        args={'x': 1},
+        status=status,
+        exit_code=1 if status != 'done' else 0,
         error='boom' if status != 'done' else None,
-        result=None, duration_sec=1.5, triggered_by='test',
-        attempts=1, max_attempts=3,
-        started_at=datetime.now(), finished_at=datetime.now(),
+        result=None,
+        duration_sec=1.5,
+        triggered_by='test',
+        attempts=1,
+        max_attempts=3,
+        started_at=datetime.now(),
+        finished_at=datetime.now(),
     )
 
 

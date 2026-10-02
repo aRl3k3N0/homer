@@ -10,17 +10,21 @@
     with span('my-op', attributes={'user': 'admin'}):
         ...
 """
+
 from .tracing import (
+    get_current_span_id,
+    get_current_trace_id,
     setup_tracing,
     shutdown_tracing,
-    tracer,
     span,
-    get_current_trace_id,
-    get_current_span_id,
+    tracer,
 )
 
 __all__ = [
-    'setup_tracing', 'shutdown_tracing',
-    'tracer', 'span',
-    'get_current_trace_id', 'get_current_span_id',
+    'get_current_span_id',
+    'get_current_trace_id',
+    'setup_tracing',
+    'shutdown_tracing',
+    'span',
+    'tracer',
 ]

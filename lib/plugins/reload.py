@@ -18,16 +18,14 @@ Hot-reload плагинов без перезапуска Homer.
       с прежней версией, если не отменены в plugin_disable.
     - Классы/функции, сохранённые где-то в переменных, не обновятся.
 """
+
 from __future__ import annotations
 
-import importlib
 import logging
-import sys
 from pathlib import Path
-from typing import Optional
+import sys
 
 from .plugin import PluginInfo, PluginState
-
 
 _log = logging.getLogger('homer.plugins.reload')
 
@@ -46,6 +44,7 @@ class PluginReloader:
         regs = {}
         try:
             from lib.notify import REGISTRY as notify_registry
+
             regs['notify'] = notify_registry
         except Exception:
             pass
@@ -82,23 +81,21 @@ class PluginReloader:
             self.mgr._initialized.discard(plugin_name)
             self.mgr._load_one(new_info, self.context)
         except Exception as e:
-            _log.error(f"reload: ошибка загрузки '{plugin_name}': {e}",
-                       exc_info=True)
+            _log.error(f"reload: ошибка загрузки '{plugin_name}': {e}", exc_info=True)
             return False
 
         if new_info.state == PluginState.ERROR:
-            _log.error(f"reload: '{plugin_name}' в состоянии error: "
-                       f"{new_info.error}")
+            _log.error(f"reload: '{plugin_name}' в состоянии error: {new_info.error}")
             return False
 
         # 4. Миграции
         if self.config.get('plugins.auto_migrate', True):
             try:
                 from lib.db import connect
+
                 sched_cfg = self.config.get('scheduler', {}) or {}
                 driver = sched_cfg.get('storage', 'sqlite')
-                conn_cfg = (sched_cfg.get(driver)
-                            or self.config.get(f'databases.{driver}'))
+                conn_cfg = sched_cfg.get(driver) or self.config.get(f'databases.{driver}')
                 if driver == 'sqlite':
                     if not conn_cfg:
                         conn_cfg = {'path': 'var/scheduler.db'}
@@ -112,8 +109,7 @@ class PluginReloader:
             except Exception as e:
                 _log.warning(f"reload: миграции '{plugin_name}': {e}")
 
-        _log.info(f"reload: '{plugin_name}' перезагружен "
-                  f"(v{new_info.version})")
+        _log.info(f"reload: '{plugin_name}' перезагружен (v{new_info.version})")
         return True
 
     def reload_all(self) -> dict[str, bool]:
@@ -148,7 +144,6 @@ class PluginReloader:
 
         # 3. Убираем команды плагина из любого кеша (если используется)
         try:
-            from lib.command_loader import CommandLoader
             # Ничего делать не нужно — loader перечитывает каждый раз.
             pass
         except Exception:
@@ -157,6 +152,7 @@ class PluginReloader:
         # 4. Чистим нотификаторы, зарегистрированные плагином
         try:
             from lib.notify import REGISTRY as notify_registry
+
             to_remove = []
             for reg_name, cls in notify_registry.items():
                 mod = getattr(cls, '__module__', '') or ''

@@ -20,16 +20,16 @@
     - открыть конкретный запуск: команда, args, полный вывод;
     - повторить запуск (retry) — открывается новая WS-сессия с теми же args.
 """
+
 from __future__ import annotations
 
-import json
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+import json
 from typing import Any, Optional
+import uuid
 
-from lib.db import connect, BaseDB, DBError
-
+from lib.db import BaseDB, DBError, connect
 
 DDL = {
     'sqlite': """
@@ -170,8 +170,10 @@ class HistoryStorage:
             try:
                 cur.execute(ddl)
             finally:
-                try: cur.close()
-                except Exception: pass
+                try:
+                    cur.close()
+                except Exception:
+                    pass
         else:
             for stmt in [s.strip() for s in ddl.split(';') if s.strip()]:
                 self.db.execute(stmt)
@@ -179,27 +181,40 @@ class HistoryStorage:
 
     # ─────────── CRUD ───────────
 
-    def start(self, user: str, command: str, args: dict,
-              client_ip: str | None = None,
-              user_agent: str | None = None,
-              session_id: str | None = None) -> str:
+    def start(
+        self,
+        user: str,
+        command: str,
+        args: dict,
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+        session_id: str | None = None,
+    ) -> str:
         """Создаёт запись о начале сессии. Возвращает id."""
         entry_id = str(uuid.uuid4())
         now = datetime.now()
 
-        cols = ('id, user_name, command, args_json, started_at, '
-                'client_ip, user_agent, session_id')
-        sql = (f"INSERT INTO homer_console_history ({cols}) "
-               f"VALUES ({self._ph_list(8)})")
-        self.db.execute(sql, [
-            entry_id, user, command, json.dumps(args, ensure_ascii=False),
-            now, client_ip, user_agent, session_id,
-        ])
+        cols = 'id, user_name, command, args_json, started_at, client_ip, user_agent, session_id'
+        sql = f"INSERT INTO homer_console_history ({cols}) VALUES ({self._ph_list(8)})"
+        self.db.execute(
+            sql,
+            [
+                entry_id,
+                user,
+                command,
+                json.dumps(args, ensure_ascii=False),
+                now,
+                client_ip,
+                user_agent,
+                session_id,
+            ],
+        )
         self.db.commit()
         return entry_id
 
-    def finish(self, entry_id: str, exit_code: int, output: str,
-               input_log: list[str] | None = None):
+    def finish(
+        self, entry_id: str, exit_code: int, output: str, input_log: list[str] | None = None
+    ):
         """Завершает запись: exit_code, output, duration."""
         now = datetime.now()
 
@@ -209,7 +224,8 @@ class HistoryStorage:
         # Достаём started_at, чтобы посчитать duration
         row = self.db.fetchone(
             f"SELECT started_at FROM homer_console_history WHERE id = {self._ph(0)}",
-            [entry_id], dictionary=True,
+            [entry_id],
+            dictionary=True,
         )
         started_at = None
         if row:
@@ -241,22 +257,30 @@ class HistoryStorage:
             f"  duration_ms = {self._ph(4)} "
             f"WHERE id = {self._ph(5)}"
         )
-        self.db.execute(sql, [
-            now, exit_code, output, input_log_json, duration_ms, entry_id,
-        ])
+        self.db.execute(
+            sql,
+            [
+                now,
+                exit_code,
+                output,
+                input_log_json,
+                duration_ms,
+                entry_id,
+            ],
+        )
         self.db.commit()
 
     def get(self, entry_id: str) -> Optional[HistoryEntry]:
         row = self.db.fetchone(
             f"SELECT * FROM homer_console_history WHERE id = {self._ph(0)}",
-            [entry_id], dictionary=True,
+            [entry_id],
+            dictionary=True,
         )
         return self._row_to_entry(row) if row else None
 
-    def list(self, user: str | None = None,
-             command: str | None = None,
-             limit: int = 100,
-             offset: int = 0) -> list[HistoryEntry]:
+    def list(
+        self, user: str | None = None, command: str | None = None, limit: int = 100, offset: int = 0
+    ) -> list[HistoryEntry]:
         where = []
         params = []
         if user:
@@ -277,13 +301,14 @@ class HistoryStorage:
 
     def distinct_commands(self, user: str | None = None) -> list[str]:
         if user:
-            sql = (f"SELECT DISTINCT command FROM homer_console_history "
-                   f"WHERE user_name = {self._ph(0)} ORDER BY command")
+            sql = (
+                f"SELECT DISTINCT command FROM homer_console_history "
+                f"WHERE user_name = {self._ph(0)} ORDER BY command"
+            )
             rows = self.db.fetchall(sql, [user], dictionary=True)
         else:
             rows = self.db.fetchall(
-                "SELECT DISTINCT command FROM homer_console_history "
-                "ORDER BY command",
+                "SELECT DISTINCT command FROM homer_console_history ORDER BY command",
                 dictionary=True,
             )
         return [r['command'] for r in rows]

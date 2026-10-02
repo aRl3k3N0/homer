@@ -1,15 +1,16 @@
 """
 Хранилище очереди поверх lib.db.
 """
+
+from datetime import datetime, timedelta
 import os
 import socket
+from typing import Optional
 import uuid
-from datetime import datetime, timedelta
-from typing import Optional, List
 
-from lib.db import connect, BaseDB, DBError
-from .models import QueueJob, JobStatus
+from lib.db import BaseDB, DBError, connect
 
+from .models import JobStatus, QueueJob
 
 DDL = {
     'sqlite': """
@@ -161,8 +162,10 @@ class QueueStorage:
             try:
                 cur.execute(ddl)
             finally:
-                try: cur.close()
-                except Exception: pass
+                try:
+                    cur.close()
+                except Exception:
+                    pass
         else:
             for stmt in [s.strip() for s in ddl.split(';') if s.strip()]:
                 self.db.execute(stmt)
@@ -174,16 +177,24 @@ class QueueStorage:
         job.created_at = job.created_at or datetime.now()
         driver = self._driver()
 
-        cols = ("command, args, priority, status, created_at, run_at, "
-                "parent_job_id, triggered_by, attempts, max_attempts, "
-                "retry_delay, timeout_sec")
+        cols = (
+            "command, args, priority, status, created_at, run_at, "
+            "parent_job_id, triggered_by, attempts, max_attempts, "
+            "retry_delay, timeout_sec"
+        )
         values = [
-            job.command, job.args_json(), job.priority,
+            job.command,
+            job.args_json(),
+            job.priority,
             job.status or JobStatus.PENDING,
-            job.created_at, job.run_at,
-            job.parent_job_id, job.triggered_by,
-            job.attempts, job.max_attempts,
-            job.retry_delay, job.timeout_sec,
+            job.created_at,
+            job.run_at,
+            job.parent_job_id,
+            job.triggered_by,
+            job.attempts,
+            job.max_attempts,
+            job.retry_delay,
+            job.timeout_sec,
         ]
         n = len(values)
         sql = f"INSERT INTO homer_queue ({cols}) VALUES ({self._ph_list(n)})"
@@ -200,8 +211,10 @@ class QueueStorage:
             out_id = cur.var(int)
             cur.execute(sql, values + [out_id])
             self.db.commit()
-            try: cur.close()
-            except Exception: pass
+            try:
+                cur.close()
+            except Exception:
+                pass
             return int(out_id.getvalue()[0])
 
         cur = self.db.execute(sql, values)
@@ -213,14 +226,17 @@ class QueueStorage:
     def get(self, job_id):
         row = self.db.fetchone(
             f"SELECT * FROM homer_queue WHERE id = {self._ph(0)}",
-            [job_id], dictionary=True,
+            [job_id],
+            dictionary=True,
         )
         return QueueJob.from_row(row) if row else None
 
     def list(self, status=None, limit=100):
         if status:
-            sql = (f"SELECT * FROM homer_queue WHERE status = {self._ph(0)} "
-                   f"ORDER BY priority DESC, id ASC")
+            sql = (
+                f"SELECT * FROM homer_queue WHERE status = {self._ph(0)} "
+                f"ORDER BY priority DESC, id ASC"
+            )
             rows = self.db.fetchall(sql, [status], dictionary=True)
         else:
             rows = self.db.fetchall(
@@ -234,10 +250,17 @@ class QueueStorage:
             "SELECT status, COUNT(*) AS cnt FROM homer_queue GROUP BY status",
             dictionary=True,
         )
-        result = {s: 0 for s in (
-            JobStatus.PENDING, JobStatus.RUNNING, JobStatus.DONE,
-            JobStatus.FAILED, JobStatus.CANCELED, JobStatus.TIMEOUT,
-        )}
+        result = dict.fromkeys(
+            (
+                JobStatus.PENDING,
+                JobStatus.RUNNING,
+                JobStatus.DONE,
+                JobStatus.FAILED,
+                JobStatus.CANCELED,
+                JobStatus.TIMEOUT,
+            ),
+            0,
+        )
         for r in rows:
             st = r['status'] if isinstance(r, dict) else r[0]
             cnt = r['cnt'] if isinstance(r, dict) else r[1]
@@ -282,8 +305,18 @@ class QueueStorage:
                 f"  FOR UPDATE SKIP LOCKED"
                 f") RETURNING *"
             )
-            params = [JobStatus.RUNNING, run_id, locked_by, lease_until, now, now,
-                      JobStatus.PENDING, now, JobStatus.RUNNING, now]
+            params = [
+                JobStatus.RUNNING,
+                run_id,
+                locked_by,
+                lease_until,
+                now,
+                now,
+                JobStatus.PENDING,
+                now,
+                JobStatus.RUNNING,
+                now,
+            ]
             row = self.db.fetchone(sql, params, dictionary=True)
             self.db.commit()
             return QueueJob.from_row(row) if row else None
@@ -296,15 +329,26 @@ class QueueStorage:
                 f"  ORDER BY priority DESC, id ASC LIMIT 1"
                 f")"
             )
-            params = [JobStatus.RUNNING, run_id, locked_by, lease_until, now, now,
-                      JobStatus.PENDING, now, JobStatus.RUNNING, now]
+            params = [
+                JobStatus.RUNNING,
+                run_id,
+                locked_by,
+                lease_until,
+                now,
+                now,
+                JobStatus.PENDING,
+                now,
+                JobStatus.RUNNING,
+                now,
+            ]
             cur = self.db.execute(sql, params)
             self.db.commit()
             if cur.rowcount != 1:
                 return None
             row = self.db.fetchone(
                 f"SELECT * FROM homer_queue WHERE run_id = {self._ph(0)}",
-                [run_id], dictionary=True,
+                [run_id],
+                dictionary=True,
             )
             return QueueJob.from_row(row) if row else None
 
@@ -327,16 +371,27 @@ class QueueStorage:
 
                 cur.execute(
                     f"UPDATE homer_queue SET {base_set} WHERE id = {self._ph(10)}",
-                    [JobStatus.RUNNING, run_id, locked_by, lease_until,
-                     now, now, JobStatus.PENDING, now, JobStatus.RUNNING, now,
-                     candidate_id]
+                    [
+                        JobStatus.RUNNING,
+                        run_id,
+                        locked_by,
+                        lease_until,
+                        now,
+                        now,
+                        JobStatus.PENDING,
+                        now,
+                        JobStatus.RUNNING,
+                        now,
+                        candidate_id,
+                    ],
                 )
         except DBError:
             return None
 
         row = self.db.fetchone(
             f"SELECT * FROM homer_queue WHERE id = {self._ph(0)}",
-            [candidate_id], dictionary=True,
+            [candidate_id],
+            dictionary=True,
         )
         return QueueJob.from_row(row) if row else None
 
@@ -352,8 +407,7 @@ class QueueStorage:
 
     # ─────────────────── Finish / Retry ───────────────────
 
-    def finish(self, job_id, run_id, status,
-               result=None, exit_code=None, error=None):
+    def finish(self, job_id, run_id, status, result=None, exit_code=None, error=None):
         """
         Завершает job.
         Если status='failed' и attempts < max_attempts — перепоставляем в очередь.
@@ -379,10 +433,19 @@ class QueueStorage:
                 f"  cancel_requested = {self._ph(5)} "
                 f"WHERE id = {self._ph(6)} AND run_id = {self._ph(7)}"
             )
-            self.db.execute(sql, [
-                JobStatus.PENDING, retry_at, error, result, exit_code,
-                self._bool(False), job_id, run_id,
-            ])
+            self.db.execute(
+                sql,
+                [
+                    JobStatus.PENDING,
+                    retry_at,
+                    error,
+                    result,
+                    exit_code,
+                    self._bool(False),
+                    job_id,
+                    run_id,
+                ],
+            )
             self.db.commit()
             return
 
@@ -397,9 +460,18 @@ class QueueStorage:
             f"  lease_until = NULL "
             f"WHERE id = {self._ph(5)} AND run_id = {self._ph(6)}"
         )
-        self.db.execute(sql, [
-            status, result, exit_code, error, now, job_id, run_id,
-        ])
+        self.db.execute(
+            sql,
+            [
+                status,
+                result,
+                exit_code,
+                error,
+                now,
+                job_id,
+                run_id,
+            ],
+        )
         self.db.commit()
 
     # ─────────────────── Cancel ───────────────────
@@ -416,7 +488,8 @@ class QueueStorage:
     def is_cancel_requested(self, job_id):
         row = self.db.fetchone(
             f"SELECT cancel_requested FROM homer_queue WHERE id = {self._ph(0)}",
-            [job_id], dictionary=True,
+            [job_id],
+            dictionary=True,
         )
         if not row:
             return False
@@ -444,7 +517,13 @@ class QueueStorage:
             f"  error = {self._ph(len(ids) + 2)} "
             f"WHERE id IN ({in_ph}) AND status = {self._ph(len(ids) + 3)}"
         )
-        params = ids + [JobStatus.CANCELED, now, reason, JobStatus.PENDING]
+        params = [
+            JobStatus.CANCELED,
+            now,
+            reason,
+            *ids,
+            JobStatus.PENDING,
+        ]
         cur = self.db.execute(sql, params)
         self.db.commit()
         count = cur.rowcount
@@ -454,7 +533,7 @@ class QueueStorage:
             f"UPDATE homer_queue SET cancel_requested = {self._ph(len(ids))} "
             f"WHERE id IN ({in_ph}) AND status = {self._ph(len(ids) + 1)}"
         )
-        params2 = ids + [self._bool(True), JobStatus.RUNNING]
+        params2 = [self._bool(True), *ids, JobStatus.RUNNING]
         self.db.execute(sql2, params2)
         self.db.commit()
 
@@ -466,8 +545,7 @@ class QueueStorage:
         seen = {job_id}
         while frontier:
             placeholders = self._ph_list(len(frontier))
-            sql = (f"SELECT id FROM homer_queue "
-                   f"WHERE parent_job_id IN ({placeholders})")
+            sql = f"SELECT id FROM homer_queue WHERE parent_job_id IN ({placeholders})"
             rows = self.db.fetchall(sql, frontier, dictionary=True)
             next_frontier = []
             for r in rows:
@@ -506,11 +584,16 @@ class QueueStorage:
             f"  status IN ({self._ph(0)}, {self._ph(1)}, {self._ph(2)}, {self._ph(3)}) "
             f"  AND finished_at < {self._ph(4)}"
         )
-        cur = self.db.execute(sql, [
-            JobStatus.DONE, JobStatus.FAILED,
-            JobStatus.CANCELED, JobStatus.TIMEOUT,
-            cutoff,
-        ])
+        cur = self.db.execute(
+            sql,
+            [
+                JobStatus.DONE,
+                JobStatus.FAILED,
+                JobStatus.CANCELED,
+                JobStatus.TIMEOUT,
+                cutoff,
+            ],
+        )
         self.db.commit()
         return cur.rowcount
 

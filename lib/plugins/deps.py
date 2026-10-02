@@ -6,6 +6,7 @@
 - Проверка semver-совместимости requires_homer.
 - Проверка версий required plugins (>=).
 """
+
 from __future__ import annotations
 
 import re
@@ -112,7 +113,7 @@ def satisfies(version: str, constraint: str) -> bool:
     # Операторы
     for op in ('>=', '<=', '>', '<', '=='):
         if constraint.startswith(op):
-            target = constraint[len(op):].strip()
+            target = constraint[len(op) :].strip()
             c = _cmp_versions(version, target)
             if op == '>=':
                 return c >= 0
@@ -131,8 +132,10 @@ def satisfies(version: str, constraint: str) -> bool:
 
 # ─────────── Граф зависимостей ───────────
 
-def resolve(plugins: dict[str, PluginInfo],
-            homer_version: Optional[str] = None) -> list[PluginInfo]:
+
+def resolve(
+    plugins: dict[str, PluginInfo], homer_version: Optional[str] = None
+) -> list[PluginInfo]:
     """
     Топологическая сортировка плагинов с учётом 'requires'.
 
@@ -151,7 +154,7 @@ def resolve(plugins: dict[str, PluginInfo],
     graph: dict[str, list[tuple[str, Optional[str]]]] = {}
     for name, p in plugins.items():
         deps: list[tuple[str, Optional[str]]] = []
-        for req in (p.requires or []):
+        for req in p.requires or []:
             if isinstance(req, dict):
                 deps.append((req.get('name', ''), req.get('version', '')))
             elif isinstance(req, str):
@@ -164,9 +167,7 @@ def resolve(plugins: dict[str, PluginInfo],
                 else:
                     deps.append((req.strip(), ''))
             else:
-                raise DependencyError(
-                    f"Плагин '{name}': неверный формат requires"
-                )
+                raise DependencyError(f"Плагин '{name}': неверный формат requires")
         graph[name] = deps
 
     # 1) Проверка наличия всех зависимостей и их версий
@@ -176,16 +177,13 @@ def resolve(plugins: dict[str, PluginInfo],
                 raise DependencyError(f"Плагин '{name}': пустая зависимость")
             if dep_name not in plugins:
                 raise DependencyError(
-                    f"Плагин '{name}' требует '{dep_name}', "
-                    f"но он не найден в plugins/"
+                    f"Плагин '{name}' требует '{dep_name}', но он не найден в plugins/"
                 )
             if constraint:
                 actual = plugins[dep_name].version or '0.0.0'
                 if not satisfies(actual, constraint):
                     raise VersionConstraintError(
-                        f"Плагин '{name}' требует "
-                        f"'{dep_name} {constraint}', "
-                        f"а установлен {actual}"
+                        f"Плагин '{name}' требует '{dep_name} {constraint}', а установлен {actual}"
                     )
 
     # 2) requires_homer
@@ -198,7 +196,7 @@ def resolve(plugins: dict[str, PluginInfo],
                 )
 
     # 3) Топосортировка (Kahn)
-    indeg: dict[str, int] = {n: 0 for n in plugins}
+    indeg: dict[str, int] = dict.fromkeys(plugins, 0)
     adj: dict[str, list[str]] = {n: [] for n in plugins}
     for name, deps in graph.items():
         for dep_name, _ in deps:
@@ -223,18 +221,18 @@ def resolve(plugins: dict[str, PluginInfo],
         remaining = [n for n in plugins if n not in ordered]
         cycle = _find_cycle(graph, remaining)
         raise DependencyError(
-            f"Обнаружен цикл зависимостей: "
-            f"{' → '.join(cycle) if cycle else ', '.join(remaining)}"
+            f"Обнаружен цикл зависимостей: {' → '.join(cycle) if cycle else ', '.join(remaining)}"
         )
 
     return [plugins[n] for n in ordered]
 
 
-def _find_cycle(graph: dict[str, list[tuple[str, Optional[str]]]],
-                candidates: list[str]) -> list[str]:
+def _find_cycle(
+    graph: dict[str, list[tuple[str, Optional[str]]]], candidates: list[str]
+) -> list[str]:
     """Ищет любой цикл среди candidates."""
     WHITE, GRAY, BLACK = 0, 1, 2
-    color = {n: WHITE for n in graph}
+    color = dict.fromkeys(graph, WHITE)
     stack: list[str] = []
 
     def dfs(n: str) -> Optional[list[str]]:

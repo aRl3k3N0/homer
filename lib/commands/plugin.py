@@ -171,6 +171,8 @@ def migrate(context):
                 console.comment(f"Пропущен (auto_migrate=false): {s}")
             for name_, err in result['errors']:
                 console.error(f"{name_}: {err}")
+            if result['errors']:
+                return 1
 
         return 0
     finally:

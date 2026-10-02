@@ -22,28 +22,30 @@
 
 Файл plugin.sig и .git/ и __pycache__/ исключаются из подсчёта.
 """
+
 from __future__ import annotations
 
 import base64
-import hashlib
-import json
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
+import json
 from pathlib import Path
 from typing import Optional
 
 try:
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-        Ed25519PrivateKey, Ed25519PublicKey,
-    )
     from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+        Ed25519PublicKey,
+    )
+
     _HAS_CRYPTO = True
 except ImportError:
     _HAS_CRYPTO = False
 
 
-EXCLUDE_PARTS = ('__pycache__', '.git', '.cache', '.mypy_cache',
-                 '.pytest_cache', '.ruff_cache')
+EXCLUDE_PARTS = ('__pycache__', '.git', '.cache', '.mypy_cache', '.pytest_cache', '.ruff_cache')
 EXCLUDE_SUFFIXES = ('.pyc', '.pyo', '.swp')
 EXCLUDE_NAMES = ('plugin.sig',)
 
@@ -56,7 +58,7 @@ class SignatureError(Exception):
 class SignatureInfo:
     algorithm: str
     key_id: str
-    signature: str          # base64
+    signature: str  # base64
     signed_files_checksum: str
     signed_at: Optional[str]
     valid: Optional[bool] = None
@@ -65,6 +67,7 @@ class SignatureInfo:
 
 
 # ─────────── Канонизация ───────────
+
 
 def _hash_file(p: Path) -> str:
     h = hashlib.sha256()
@@ -112,15 +115,14 @@ def canonical_string(plugin_dir: Path) -> tuple[str, str]:
 
 # ─────────── Генерация ключей ───────────
 
+
 def generate_keypair(key_id: str) -> tuple[str, str]:
     """
     Генерирует приватный и публичный ключи ed25519.
     Возвращает (private_pem, public_pem) в PEM-формате.
     """
     if not _HAS_CRYPTO:
-        raise SignatureError(
-            "Требуется cryptography. Установите: pip install cryptography"
-        )
+        raise SignatureError("Требуется cryptography. Установите: pip install cryptography")
     priv = Ed25519PrivateKey.generate()
     priv_pem = priv.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -139,8 +141,8 @@ def generate_keypair(key_id: str) -> tuple[str, str]:
 
 # ─────────── Подпись ───────────
 
-def sign_plugin(plugin_dir: Path, private_pem: str,
-                key_id: str) -> SignatureInfo:
+
+def sign_plugin(plugin_dir: Path, private_pem: str, key_id: str) -> SignatureInfo:
     """
     Подписывает плагин. Записывает plugin.sig в корень.
     """
@@ -149,7 +151,8 @@ def sign_plugin(plugin_dir: Path, private_pem: str,
 
     canonical, checksum = canonical_string(plugin_dir)
     priv = serialization.load_pem_private_key(
-        private_pem.encode('utf-8'), password=None,
+        private_pem.encode('utf-8'),
+        password=None,
     )
     if not isinstance(priv, Ed25519PrivateKey):
         raise SignatureError("Ключ должен быть ed25519")
@@ -167,18 +170,25 @@ def sign_plugin(plugin_dir: Path, private_pem: str,
     )
 
     sig_path = plugin_dir / 'plugin.sig'
-    sig_path.write_text(json.dumps({
-        'algorithm': info.algorithm,
-        'key_id': info.key_id,
-        'signature': info.signature,
-        'signed_files_checksum': info.signed_files_checksum,
-        'signed_at': info.signed_at,
-    }, indent=2), encoding='utf-8')
+    sig_path.write_text(
+        json.dumps(
+            {
+                'algorithm': info.algorithm,
+                'key_id': info.key_id,
+                'signature': info.signature,
+                'signed_files_checksum': info.signed_files_checksum,
+                'signed_at': info.signed_at,
+            },
+            indent=2,
+        ),
+        encoding='utf-8',
+    )
 
     return info
 
 
 # ─────────── Верификация ───────────
+
 
 def load_signature(plugin_dir: Path) -> Optional[SignatureInfo]:
     sig_path = plugin_dir / 'plugin.sig'
@@ -197,8 +207,9 @@ def load_signature(plugin_dir: Path) -> Optional[SignatureInfo]:
     )
 
 
-def verify_plugin(plugin_dir: Path, public_pem: str,
-                  expected_key_id: Optional[str] = None) -> SignatureInfo:
+def verify_plugin(
+    plugin_dir: Path, public_pem: str, expected_key_id: Optional[str] = None
+) -> SignatureInfo:
     """
     Проверяет подпись плагина.
     Возвращает SignatureInfo с valid=True/False.
@@ -212,8 +223,7 @@ def verify_plugin(plugin_dir: Path, public_pem: str,
 
     if expected_key_id and info.key_id != expected_key_id:
         info.valid = False
-        info.error = (f"key_id не совпадает: "
-                      f"ожидался {expected_key_id}, в файле {info.key_id}")
+        info.error = f"key_id не совпадает: ожидался {expected_key_id}, в файле {info.key_id}"
         return info
 
     # Проверяем, что checksum содержимого совпадает
@@ -226,9 +236,11 @@ def verify_plugin(plugin_dir: Path, public_pem: str,
 
     if cur_checksum != info.signed_files_checksum:
         info.valid = False
-        info.error = (f"Содержимое плагина изменилось после подписи "
-                      f"(checksum {info.signed_files_checksum[:8]} → "
-                      f"{cur_checksum[:8]})")
+        info.error = (
+            f"Содержимое плагина изменилось после подписи "
+            f"(checksum {info.signed_files_checksum[:8]} → "
+            f"{cur_checksum[:8]})"
+        )
         return info
 
     # Криптографическая проверка
@@ -252,6 +264,7 @@ def verify_plugin(plugin_dir: Path, public_pem: str,
 
 # ─────────── Доверенные ключи ───────────
 
+
 class TrustStore:
     """
     Хранит доверенные публичные ключи.
@@ -259,6 +272,7 @@ class TrustStore:
         - config.yml → plugins.pubkeys: {key_id: pem}
         - файл plugins.pubkeys в корне: JSON {key_id: pem}
     """
+
     def __init__(self, root_dir: Path, config=None):
         self.root = Path(root_dir)
         self.config = config
@@ -293,16 +307,20 @@ class TrustStore:
         if not self.keys:
             info.valid = False
             info.trusted = False
-            info.error = ("Нет доверенных ключей. Добавьте в config.yml → "
-                          "plugins.pubkeys или в файл plugins.pubkeys")
+            info.error = (
+                "Нет доверенных ключей. Добавьте в config.yml → "
+                "plugins.pubkeys или в файл plugins.pubkeys"
+            )
             return info
 
         pem = self.keys.get(info.key_id)
         if not pem:
             info.valid = False
             info.trusted = False
-            info.error = (f"Ключ '{info.key_id}' не в списке доверенных. "
-                          f"Доверенные: {', '.join(self.keys.keys())}")
+            info.error = (
+                f"Ключ '{info.key_id}' не в списке доверенных. "
+                f"Доверенные: {', '.join(self.keys.keys())}"
+            )
             return info
 
         result = verify_plugin(plugin_dir, pem, expected_key_id=info.key_id)
@@ -312,7 +330,7 @@ class TrustStore:
 
 # ─────────── CLI-обёртки ───────────
 
-def cmd_sign(plugin_dir: Path, private_key_path: Path, key_id: str
-             ) -> SignatureInfo:
+
+def cmd_sign(plugin_dir: Path, private_key_path: Path, key_id: str) -> SignatureInfo:
     private_pem = private_key_path.read_text(encoding='utf-8')
     return sign_plugin(plugin_dir, private_pem, key_id)

@@ -1,8 +1,9 @@
 """
 Общие фикстуры для тестов Homer.
 """
-import sys
+
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -70,18 +71,14 @@ def sample_command_dir(tmp_path):
     commands.mkdir()
     (commands / '__init__.py').write_text('', encoding='utf-8')
     (commands / 'hello.py').write_text(
-        'DESCRIPTION = "Привет"\n'
-        'def execute(context):\n'
-        '    return 0\n',
+        'DESCRIPTION = "Привет"\ndef execute(context):\n    return 0\n',
         encoding='utf-8',
     )
     sub = commands / 'report'
     sub.mkdir()
     (sub / '__init__.py').write_text('', encoding='utf-8')
     (sub / 'daily.py').write_text(
-        'DESCRIPTION = "Ежедневно"\n'
-        'def execute(context):\n'
-        '    return 0\n',
+        'DESCRIPTION = "Ежедневно"\ndef execute(context):\n    return 0\n',
         encoding='utf-8',
     )
     return commands

@@ -1,11 +1,14 @@
 """
 Базовый класс для всех драйверов БД.
 """
+
 from __future__ import annotations
-from typing import Any, Iterable, Optional, Sequence
-from lib.tracing import span
+
+from collections.abc import Sequence
 from contextlib import contextmanager
-from typing import Optional
+from typing import Any, Optional
+
+from lib.tracing import span
 
 
 class DBError(Exception):
@@ -16,6 +19,7 @@ class ConnectionConfig:
     """
     Универсальный контейнер параметров подключения.
     """
+
     def __init__(self, data: Optional[dict] = None, **kwargs):
         self._data = {}
         if data:
@@ -61,8 +65,7 @@ class ConnectionConfig:
         return dict(self._data)
 
     def __repr__(self):
-        safe = {k: ('***' if 'pass' in k.lower() else v)
-                for k, v in self._data.items()}
+        safe = {k: ('***' if 'pass' in k.lower() else v) for k, v in self._data.items()}
         return f"ConnectionConfig({safe})"
 
 
@@ -82,7 +85,9 @@ class BaseDB:
     @classmethod
     def _normalize_config(cls, source):
         return ConnectionConfig.from_any(
-            source, prefix=None, defaults=cls.default_config(),
+            source,
+            prefix=None,
+            defaults=cls.default_config(),
         )
 
     @classmethod
@@ -110,9 +115,7 @@ class BaseDB:
     @property
     def connection(self):
         if self._conn is None:
-            raise DBError(
-                f"[{self.driver_name}] Нет активного соединения. Вызовите .connect()"
-            )
+            raise DBError(f"[{self.driver_name}] Нет активного соединения. Вызовите .connect()")
         return self._conn
 
     @property
@@ -122,9 +125,11 @@ class BaseDB:
     def cursor(self, dictionary=False):
         return self._make_cursor(dictionary=dictionary)
 
-    def execute(self, sql: str, params: Optional[Sequence[Any]] = None,
-                dictionary: bool = False) -> Any:
+    def execute(
+        self, sql: str, params: Optional[Sequence[Any]] = None, dictionary: bool = False
+    ) -> Any:
         from lib.metrics import inc_db_query
+
         inc_db_query(self.driver_name, 'execute')
 
         with span(
@@ -148,18 +153,21 @@ class BaseDB:
         cur.executemany(sql, seq_params)
         return cur
 
-    def fetchall(self, sql: str, params: Optional[Sequence[Any]] = None,
-                 dictionary: bool = False) -> list[Any]:
+    def fetchall(
+        self, sql: str, params: Optional[Sequence[Any]] = None, dictionary: bool = False
+    ) -> list[Any]:
         cur = self.execute(sql, params, dictionary=dictionary)
         return cur.fetchall()
 
-    def fetchone(self, sql: str, params: Optional[Sequence[Any]] = None,
-                 dictionary: bool = False) -> Optional[Any]:
+    def fetchone(
+        self, sql: str, params: Optional[Sequence[Any]] = None, dictionary: bool = False
+    ) -> Optional[Any]:
         cur = self.execute(sql, params, dictionary=dictionary)
         return cur.fetchone()
 
-    def fetchval(self, sql: str, params: Optional[Sequence[Any]] = None,
-                 default: Any = None) -> Any:
+    def fetchval(
+        self, sql: str, params: Optional[Sequence[Any]] = None, default: Any = None
+    ) -> Any:
         row = self.fetchone(sql, params)
         if row is None:
             return default

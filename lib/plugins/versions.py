@@ -22,17 +22,17 @@
 
 Обновление версии в homer_plugin_state после успеха.
 """
+
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import re
 from typing import Optional
 
+from .deps import _cmp_versions, parse_version
 from .plugin import PluginInfo
-from .deps import parse_version, _cmp_versions
-
 
 DDL_STATE = {
     'sqlite': """
@@ -73,10 +73,13 @@ DDL_STATE = {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     """,
 }
+DDL_STATE['postgresql'] = DDL_STATE['postgres']
+DDL_STATE['mariadb'] = DDL_STATE['mysql']
 
 # Регулярка для нового формата: upgrade_1_0_0_to_1_1_0
 _UP_RE = re.compile(r'^upgrade_(?P<from>.+?)_to_(?P<to>.+)$')
 _DOWN_RE = re.compile(r'^downgrade_(?P<from>.+?)_to_(?P<to>.+)$')
+
 
 def _parse_upgrade_dir(name: str) -> tuple[str, str] | None:
     m = _UP_RE.match(name)
@@ -87,8 +90,7 @@ def _parse_upgrade_dir(name: str) -> tuple[str, str] | None:
             return None
         to = m2.group(1).replace('_', '.')
         return ('', to)
-    return (m.group('from').replace('_', '.'),
-            m.group('to').replace('_', '.'))
+    return (m.group('from').replace('_', '.'), m.group('to').replace('_', '.'))
 
 
 def _parse_downgrade_dir(name: str) -> tuple[str, str] | None:
@@ -99,8 +101,7 @@ def _parse_downgrade_dir(name: str) -> tuple[str, str] | None:
             return None
         to = m2.group(1).replace('_', '.')
         return ('', to)
-    return (m.group('from').replace('_', '.'),
-            m.group('to').replace('_', '.'))
+    return (m.group('from').replace('_', '.'), m.group('to').replace('_', '.'))
 
 
 # В VersionManager.compute_upgrade_path:
@@ -130,12 +131,14 @@ def compute_upgrade_path(self, plugin, driver):
         if _cmp_versions(installed, to_v) < 0 and _cmp_versions(to_v, target) <= 0:
             driver_dir = d / driver
             if driver_dir.exists():
-                steps.append(UpgradeStep(
-                    from_version=from_v or installed,
-                    to_version=to_v,
-                    directory=driver_dir,
-                    driver=driver,
-                ))
+                steps.append(
+                    UpgradeStep(
+                        from_version=from_v or installed,
+                        to_version=to_v,
+                        directory=driver_dir,
+                        driver=driver,
+                    )
+                )
 
     steps.sort(key=lambda s: parse_version(s.to_version))
     return steps
@@ -166,16 +169,19 @@ def compute_downgrade_path(self, plugin, driver, target_version):
         if _cmp_versions(to_v, installed) <= 0 and _cmp_versions(to_v, target_version) >= 0:
             driver_dir = d / driver
             if driver_dir.exists():
-                steps.append(DowngradeStep(
-                    from_version=from_v or installed,
-                    to_version=to_v,
-                    directory=driver_dir,
-                    driver=driver,
-                ))
+                steps.append(
+                    DowngradeStep(
+                        from_version=from_v or installed,
+                        to_version=to_v,
+                        directory=driver_dir,
+                        driver=driver,
+                    )
+                )
 
     # Сортировка: сначала большие версии
     steps.sort(key=lambda s: parse_version(s.to_version), reverse=True)
     return steps
+
 
 @dataclass
 class DowngradeStep:
@@ -210,8 +216,10 @@ class VersionManager:
             try:
                 cur.execute(ddl)
             finally:
-                try: cur.close()
-                except Exception: pass
+                try:
+                    cur.close()
+                except Exception:
+                    pass
         else:
             for stmt in [s.strip() for s in ddl.split(';') if s.strip()]:
                 self.db.execute(stmt)
@@ -219,16 +227,15 @@ class VersionManager:
 
     def get_installed_version(self, plugin_name: str) -> Optional[str]:
         row = self.db.fetchone(
-            f"SELECT installed_version FROM homer_plugin_state "
-            f"WHERE plugin_name = {self._ph(0)}",
-            [plugin_name], dictionary=True,
+            f"SELECT installed_version FROM homer_plugin_state WHERE plugin_name = {self._ph(0)}",
+            [plugin_name],
+            dictionary=True,
         )
         if not row:
             return None
         return row['installed_version'] if isinstance(row, dict) else row[0]
 
-    def set_installed_version(self, plugin_name: str, version: str,
-                              is_new: bool = False):
+    def set_installed_version(self, plugin_name: str, version: str, is_new: bool = False):
         now = datetime.now()
         existing = self.get_installed_version(plugin_name)
         if existing is None:
@@ -251,8 +258,7 @@ class VersionManager:
 
     # ─────────── Апгрейд ───────────
 
-    def compute_upgrade_path(self, plugin: PluginInfo, driver: str
-                             ) -> list[UpgradeStep]:
+    def compute_upgrade_path(self, plugin: PluginInfo, driver: str) -> list[UpgradeStep]:
         """
         Находит все upgrade-каталоги, которые нужно применить
         для перехода с installed_version на plugin.version.
@@ -294,22 +300,26 @@ class VersionManager:
             if _cmp_versions(installed, ver) < 0 and _cmp_versions(ver, target) <= 0:
                 driver_dir = d / driver
                 if driver_dir.exists():
-                    steps.append(UpgradeStep(
-                        from_version=installed, to_version=ver,
-                        directory=driver_dir, driver=driver,
-                    ))
+                    steps.append(
+                        UpgradeStep(
+                            from_version=installed,
+                            to_version=ver,
+                            directory=driver_dir,
+                            driver=driver,
+                        )
+                    )
 
         steps.sort(key=lambda s: parse_version(s.to_version))
         return steps
 
-    def apply_upgrade(self, plugin: PluginInfo, step: UpgradeStep,
-                      apply_sql) -> int:
+    def apply_upgrade(self, plugin: PluginInfo, step: UpgradeStep, apply_sql) -> int:
         """
         Применяет все .sql в step.directory в порядке сортировки.
         apply_sql(stmt) — функция, выполняющая один стейтмент.
         Возвращает число применённых файлов.
         """
         from .migrations import _split_sql
+
         count = 0
         sqls = sorted(
             [f for f in step.directory.glob('*.sql')],
@@ -323,8 +333,9 @@ class VersionManager:
         self.db.commit()
         return count
 
-    def compute_downgrade_path(self, plugin: PluginInfo, driver: str,
-                               target_version: str) -> list[DowngradeStep]:
+    def compute_downgrade_path(
+        self, plugin: PluginInfo, driver: str, target_version: str
+    ) -> list[DowngradeStep]:
         """
         Находит downgrade-шаги от текущей установленной версии к target_version.
 
@@ -359,8 +370,7 @@ class VersionManager:
         # Отбираем: target_version <= v < installed_version
         selected = []
         for ver, d in candidates:
-            if _cmp_versions(target_version, ver) <= 0 \
-                and _cmp_versions(ver, installed) < 0:
+            if _cmp_versions(target_version, ver) <= 0 and _cmp_versions(ver, installed) < 0:
                 driver_dir = d / driver
                 if driver_dir.exists():
                     selected.append((ver, driver_dir))
@@ -378,9 +388,9 @@ class VersionManager:
             for ver, ddir in selected
         ]
 
-    def apply_downgrade(self, plugin: PluginInfo, step: DowngradeStep,
-                        apply_sql) -> int:
+    def apply_downgrade(self, plugin: PluginInfo, step: DowngradeStep, apply_sql) -> int:
         from .migrations import _split_sql
+
         count = 0
         sqls = sorted(
             [f for f in step.directory.glob('*.sql')],

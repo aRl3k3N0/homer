@@ -18,27 +18,31 @@
 Плейсхолдеры в шаблонах: {{ key }} (Jinja2, если установлен,
 иначе — простой встроенный рендер).
 """
+
 from __future__ import annotations
-from pathlib import Path
-from typing import Any, Iterable, Optional, Union
-import os
-import re
-import ssl
-import shutil
-import subprocess
-import smtplib
-from pathlib import Path
+
+from collections.abc import Iterable
+from datetime import datetime
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
 from email.utils import formataddr, formatdate, make_msgid
-from datetime import datetime
+import os
+from pathlib import Path
+import re
+import shutil
+import smtplib
+import ssl
+import subprocess
+from typing import Any, Optional, Union
+
 from lib.tracing import span
 
 StrOrList = Union[str, Iterable[str]]
 
 try:
-    from jinja2 import Environment, FileSystemLoader, select_autoescape, ChoiceLoader
+    from jinja2 import ChoiceLoader, Environment, FileSystemLoader, select_autoescape
+
     _HAS_JINJA = True
 except ImportError:
     _HAS_JINJA = False
@@ -52,8 +56,10 @@ class MailError(Exception):
 #                            ТРАНСПОРТЫ
 # ══════════════════════════════════════════════════════════════════════
 
+
 class BaseTransport:
     """Базовый класс транспорта"""
+
     name = 'base'
 
     def __init__(self, config):
@@ -69,6 +75,7 @@ class BaseTransport:
 
 class SMTPTransport(BaseTransport):
     """Отправка через SMTP"""
+
     name = 'smtp'
 
     def send(self, msg, recipients):
@@ -84,8 +91,7 @@ class SMTPTransport(BaseTransport):
         try:
             if use_ssl:
                 context = ssl.create_default_context()
-                server = smtplib.SMTP_SSL(host, port, timeout=timeout,
-                                          context=context)
+                server = smtplib.SMTP_SSL(host, port, timeout=timeout, context=context)
             else:
                 server = smtplib.SMTP(host, port, timeout=timeout)
                 if use_tls:
@@ -97,7 +103,7 @@ class SMTPTransport(BaseTransport):
             server.sendmail(msg['From'], recipients, msg.as_string())
             server.quit()
         except Exception as e:
-            raise MailError(f"SMTP ошибка: {e}") from e
+            raise MailError(f"SMTP error: {e}") from e
 
 
 class MailxTransport(BaseTransport):
@@ -110,19 +116,18 @@ class MailxTransport(BaseTransport):
         from_arg: "-r"                # как задать From (-r или -a)
         set_from_env: true            # использовать EMAIL / REPLYTO
     """
+
     name = 'mailx'
 
     def __init__(self, config):
         super().__init__(config)
         cfg = config.get('mailer.mailx', {}) or {}
 
-        self.binary = cfg.get('binary') or self._find_binary([
-            'mailx', 'nail', '/usr/bin/mailx', '/bin/mailx', '/usr/bin/nail'
-        ])
+        self.binary = cfg.get('binary') or self._find_binary(
+            ['mailx', 'nail', '/usr/bin/mailx', '/bin/mailx', '/usr/bin/nail']
+        )
         if not self.binary:
-            raise MailError(
-                "Не найден mailx (nail). Укажите mailer.mailx.binary в config.yml"
-            )
+            raise MailError("mailx (nail) not found. Specify mailer.mailx.binary in config.yml")
 
         self.extra_args = cfg.get('extra_args', [])
         self.from_arg = cfg.get('from_arg', '-r')
@@ -159,14 +164,12 @@ class MailxTransport(BaseTransport):
         body = None
         for part in msg.walk():
             if part.get_content_type() == 'text/html':
-                body = part.get_payload(decode=True).decode('utf-8',
-                                                            errors='replace')
+                body = part.get_payload(decode=True).decode('utf-8', errors='replace')
                 break
         if body is None:
             for part in msg.walk():
                 if part.get_content_type() == 'text/plain':
-                    body = part.get_payload(decode=True).decode('utf-8',
-                                                                errors='replace')
+                    body = part.get_payload(decode=True).decode('utf-8', errors='replace')
                     break
         if body is None:
             body = ''
@@ -186,13 +189,13 @@ class MailxTransport(BaseTransport):
             )
             if result.returncode != 0:
                 raise MailError(
-                    f"mailx вернул код {result.returncode}: "
+                    f"mailx returned the code {result.returncode}: "
                     f"{result.stderr.decode('utf-8', errors='replace').strip()}"
                 )
         except subprocess.TimeoutExpired:
-            raise MailError("mailx не ответил за 60 секунд")
+            raise MailError("mailx didn’t respond within 60 seconds.")
         except FileNotFoundError:
-            raise MailError(f"Не найден бинарь mailx: {self.binary}")
+            raise MailError(f"The mailx binary was not found: {self.binary}")
 
 
 class SendmailTransport(BaseTransport):
@@ -203,19 +206,18 @@ class SendmailTransport(BaseTransport):
         binary: /usr/sbin/sendmail
         extra_args: ["-t", "-i"]
     """
+
     name = 'sendmail'
 
     def __init__(self, config):
         super().__init__(config)
         cfg = config.get('mailer.sendmail', {}) or {}
 
-        self.binary = cfg.get('binary') or self._find_binary([
-            'sendmail', '/usr/sbin/sendmail', '/usr/lib/sendmail'
-        ])
+        self.binary = cfg.get('binary') or self._find_binary(
+            ['sendmail', '/usr/sbin/sendmail', '/usr/lib/sendmail']
+        )
         if not self.binary:
-            raise MailError(
-                "Не найден sendmail. Укажите mailer.sendmail.binary в config.yml"
-            )
+            raise MailError("sendmail not found. Specify mailer.sendmail.binary in config.yml")
 
         self.extra_args = cfg.get('extra_args', ['-t', '-i'])
 
@@ -240,11 +242,11 @@ class SendmailTransport(BaseTransport):
             )
             if result.returncode != 0:
                 raise MailError(
-                    f"sendmail вернул код {result.returncode}: "
+                    f"sendmail returned the code {result.returncode}: "
                     f"{result.stderr.decode('utf-8', errors='replace').strip()}"
                 )
         except subprocess.TimeoutExpired:
-            raise MailError("sendmail не ответил за 60 секунд")
+            raise MailError("sendmail did not respond within 60 seconds")
 
 
 class FileTransport(BaseTransport):
@@ -254,12 +256,22 @@ class FileTransport(BaseTransport):
     Конфиг (mailer.file):
         dir: /var/spool/homer/mail
     """
+
     name = 'file'
 
     def __init__(self, config):
         super().__init__(config)
-        cfg = config.get('mailer.file', {}) or {}
-        self.dir = Path(cfg.get('dir', 'var/mail'))
+        cfg = config.get("mailer.file", {}) or {}
+        path = cfg.get("dir")
+
+        if not path:
+            paths = getattr(config, "paths", None)
+            if paths:
+                path = paths.email_out_dir
+            else:
+                path = "var/email"
+
+        self.dir = Path(path)
         self.dir.mkdir(parents=True, exist_ok=True)
 
     def send(self, msg, recipients):
@@ -284,6 +296,7 @@ TRANSPORTS = {
 #                              MAILER
 # ══════════════════════════════════════════════════════════════════════
 
+
 class Mailer:
     def __init__(self, config, templates_dir=None, extra_template_dirs=None):
         """
@@ -293,17 +306,22 @@ class Mailer:
         self.config = config
 
         if templates_dir is None:
-            templates_dir = config.get('mailer.templates_dir', 'email')
-        self.templates_dir = Path(templates_dir) if templates_dir else Path('email')
+            paths = getattr(config, "paths", None)
+            if paths:
+                templates_dir = paths.email_templates_dir
+            else:
+                templates_dir = config.get("mailer.templates_dir", "email")
+
+        self.templates_dir = Path(templates_dir)
 
         search_dirs = [self.templates_dir]
         if extra_template_dirs:
             search_dirs.extend(extra_template_dirs)
 
         if _HAS_JINJA:
-            loader = ChoiceLoader([
-                FileSystemLoader(str(d)) for d in search_dirs if Path(d).exists()
-            ])
+            loader = ChoiceLoader(
+                [FileSystemLoader(str(d)) for d in search_dirs if Path(d).exists()]
+            )
             self._jinja_env = Environment(
                 loader=loader,
                 autoescape=select_autoescape(['html', 'xml']),
@@ -318,8 +336,7 @@ class Mailer:
         transport_name = config.get('mailer.transport', 'smtp')
         if transport_name not in TRANSPORTS:
             raise MailError(
-                f"Неизвестный транспорт '{transport_name}'. "
-                f"Доступные: {', '.join(TRANSPORTS)}"
+                f"Unknown transport '{transport_name}'. Available: {', '.join(TRANSPORTS)}"
             )
         self.transport_name = transport_name
         self.transport = TRANSPORTS[transport_name](config)
@@ -381,9 +398,12 @@ class Mailer:
 
         return re.sub(r'\{\{\s*([^}]+?)\s*\}\}', replace, template_str)
 
-    def render(self, template_name: str,
-               context: Optional[dict[str, Any]] = None,
-               subject_override: Optional[str] = None) -> dict[str, Optional[str]]:
+    def render(
+        self,
+        template_name: str,
+        context: Optional[dict[str, Any]] = None,
+        subject_override: Optional[str] = None,
+    ) -> dict[str, Optional[str]]:
         context = context or {}
 
         html = self._load_template(template_name, 'html')
@@ -391,9 +411,7 @@ class Mailer:
         subject_tpl = self._load_template(template_name, 'subject')
 
         if html is None and text is None:
-            raise MailError(
-                f"Шаблон '{template_name}' не найден в {self.templates_dir}"
-            )
+            raise MailError(f"Шаблон '{template_name}' не найден в {self.templates_dir}")
 
         result = {
             'html': self._render(html, context) if html else None,
@@ -405,23 +423,25 @@ class Mailer:
         elif subject_tpl:
             result['subject'] = self._render(subject_tpl, context).strip()
         else:
-            result['subject'] = self.config.get(
-                'mailer.default_subject', 'Уведомление Homer'
-            )
+            result['subject'] = self.config.get('mailer.default_subject', 'Notification Homer')
 
         return result
 
     # ─────────────────── Отправка ───────────────────
 
-    def send(self, to: StrOrList, template_name: str,
-             context: Optional[dict[str, Any]] = None,
-             subject: Optional[str] = None,
-             cc: Optional[StrOrList] = None,
-             bcc: Optional[StrOrList] = None,
-             reply_to: Optional[str] = None,
-             attachments: Optional[Iterable[Union[str, Path]]] = None,
-             from_addr: Optional[str] = None,
-             from_name: Optional[str] = None) -> bool:
+    def send(
+        self,
+        to: StrOrList,
+        template_name: str,
+        context: Optional[dict[str, Any]] = None,
+        subject: Optional[str] = None,
+        cc: Optional[StrOrList] = None,
+        bcc: Optional[StrOrList] = None,
+        reply_to: Optional[str] = None,
+        attachments: Optional[Iterable[Union[str, Path]]] = None,
+        from_addr: Optional[str] = None,
+        from_name: Optional[str] = None,
+    ) -> bool:
         with span(
             'mailer.send',
             kind='client',
@@ -432,15 +452,16 @@ class Mailer:
                 'mailer.subject': subject or '',
             },
         ):
-            rendered = self.render(template_name, context,
-                                   subject_override=subject)
+            rendered = self.render(template_name, context, subject_override=subject)
 
             msg = MIMEMultipart('mixed')
             msg['Subject'] = rendered['subject']
-            msg['From'] = formataddr((
-                from_name or self.default_from_name,
-                from_addr or self.default_from,
-            ))
+            msg['From'] = formataddr(
+                (
+                    from_name or self.default_from_name,
+                    from_addr or self.default_from,
+                )
+            )
             msg['To'] = ', '.join(self._as_list(to))
             msg['Date'] = formatdate(localtime=True)
             msg['Message-ID'] = make_msgid()
@@ -461,11 +482,9 @@ class Mailer:
                 for path in attachments:
                     path = Path(path)
                     if not path.exists():
-                        raise MailError(f"Вложение не найдено: {path}")
+                        raise MailError(f"The attachment was not found: {path}")
                     part = MIMEApplication(path.read_bytes(), Name=path.name)
-                    part['Content-Disposition'] = (
-                        f'attachment; filename="{path.name}"'
-                    )
+                    part['Content-Disposition'] = f'attachment; filename="{path.name}"'
                     msg.attach(part)
 
             recipients = self._as_list(to) + self._as_list(cc) + self._as_list(bcc)

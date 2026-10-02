@@ -1,15 +1,16 @@
 """
 Хранилище cron-задач поверх lib.db.
 """
+
+from datetime import datetime, timedelta
 import os
 import socket
+from typing import Optional
 import uuid
-from datetime import datetime, timedelta
-from typing import Optional, List
 
-from lib.db import connect, BaseDB, DBError
+from lib.db import BaseDB, DBError, connect
+
 from .base import BaseStorage, Task
-
 
 DDL = {
     'sqlite': """
@@ -132,26 +133,36 @@ class DBStorage(BaseStorage):
             try:
                 cur.execute(ddl)
             finally:
-                try: cur.close()
-                except Exception: pass
+                try:
+                    cur.close()
+                except Exception:
+                    pass
         else:
             for stmt in [s.strip() for s in ddl.split(';') if s.strip()]:
                 self.db.execute(stmt)
         self.db.commit()
 
     def add(self, task):
-        sql = (f"INSERT INTO homer_tasks "
-               f"(name, command, args, cron, enabled, description) "
-               f"VALUES ({self._ph_list(6)})")
-        cur = self.db.execute(sql, [
-            task.name, task.command, task.args_json(), task.cron,
-            self._bool(task.enabled), task.description,
-        ])
+        sql = (
+            f"INSERT INTO homer_tasks "
+            f"(name, command, args, cron, enabled, description) "
+            f"VALUES ({self._ph_list(6)})"
+        )
+        cur = self.db.execute(
+            sql,
+            [
+                task.name,
+                task.command,
+                task.args_json(),
+                task.cron,
+                self._bool(task.enabled),
+                task.description,
+            ],
+        )
         self.db.commit()
         if self._driver() == 'postgres':
             row = self.db.fetchone(
-                f"SELECT id FROM homer_tasks WHERE name = {self._ph(0)}",
-                [task.name]
+                f"SELECT id FROM homer_tasks WHERE name = {self._ph(0)}", [task.name]
             )
             return row[0] if not isinstance(row, dict) else next(iter(row.values()))
         return cur.lastrowid
@@ -159,20 +170,23 @@ class DBStorage(BaseStorage):
     def get(self, task_id):
         row = self.db.fetchone(
             f"SELECT * FROM homer_tasks WHERE id = {self._ph(0)}",
-            [task_id], dictionary=True,
+            [task_id],
+            dictionary=True,
         )
         return Task.from_row(row) if row else None
 
     def get_by_name(self, name):
         row = self.db.fetchone(
             f"SELECT * FROM homer_tasks WHERE name = {self._ph(0)}",
-            [name], dictionary=True,
+            [name],
+            dictionary=True,
         )
         return Task.from_row(row) if row else None
 
     def list(self):
         rows = self.db.fetchall(
-            "SELECT * FROM homer_tasks ORDER BY name", dictionary=True,
+            "SELECT * FROM homer_tasks ORDER BY name",
+            dictionary=True,
         )
         return [Task.from_row(r) for r in rows]
 
@@ -186,18 +200,26 @@ class DBStorage(BaseStorage):
             f"last_error = {self._ph(8)}, next_run = {self._ph(9)} "
             f"WHERE id = {self._ph(10)}"
         )
-        self.db.execute(sql, [
-            task.name, task.command, task.args_json(), task.cron,
-            self._bool(task.enabled), task.description,
-            task.last_run, task.last_status, task.last_error,
-            task.next_run, task.id,
-        ])
+        self.db.execute(
+            sql,
+            [
+                task.name,
+                task.command,
+                task.args_json(),
+                task.cron,
+                self._bool(task.enabled),
+                task.description,
+                task.last_run,
+                task.last_status,
+                task.last_error,
+                task.next_run,
+                task.id,
+            ],
+        )
         self.db.commit()
 
     def remove(self, task_id):
-        self.db.execute(
-            f"DELETE FROM homer_tasks WHERE id = {self._ph(0)}", [task_id]
-        )
+        self.db.execute(f"DELETE FROM homer_tasks WHERE id = {self._ph(0)}", [task_id])
         self.db.commit()
 
     def acquire_task(self, task_id, lease_seconds=300):
@@ -217,8 +239,17 @@ class DBStorage(BaseStorage):
             f"WHERE id = {self._ph(6)} AND enabled = {self._ph(7)} "
             f"  AND (lease_until IS NULL OR lease_until < {self._ph(8)})"
         )
-        params = [locked_by, lease_until, run_id, now, 'running', now,
-                  task_id, self._bool(True), now]
+        params = [
+            locked_by,
+            lease_until,
+            run_id,
+            now,
+            'running',
+            now,
+            task_id,
+            self._bool(True),
+            now,
+        ]
         cur = self.db.execute(sql, params)
         self.db.commit()
         if cur.rowcount == 1:

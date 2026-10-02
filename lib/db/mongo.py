@@ -5,6 +5,7 @@ MongoDB — документная БД.
     - Нет SQL. Работаем через коллекции.
     - Даём удобный API: db.collection('users').find({...}).
 """
+
 from __future__ import annotations
 
 from .base import BaseDB, DBError
@@ -29,9 +30,7 @@ class MongoDB(BaseDB):
         try:
             from pymongo import MongoClient
         except ImportError as e:
-            raise DBError(
-                "Установите pymongo: pip install pymongo"
-            ) from e
+            raise DBError("Установите pymongo: pip install pymongo") from e
 
         cfg = self.config
 

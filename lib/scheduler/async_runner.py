@@ -12,22 +12,30 @@
     - если команда написана синхронно — запускается через run_in_executor;
     - если команда — async def execute_async(context) — выполняется напрямую.
 """
+
 from __future__ import annotations
 
 import asyncio
-import logging
-import time
-import traceback
 from datetime import datetime
+import traceback
 
 from lib.queue import QueueStorage
-from lib.queue.models import QueueJob, JobStatus
+from lib.queue.models import JobStatus, QueueJob
 
 
 class AsyncScheduler:
-    def __init__(self, storage, command_loader, config, logger, root_dir,
-                 lease_seconds=300, max_workers=8, heartbeat_interval=30,
-                 notify_manager=None):
+    def __init__(
+        self,
+        storage,
+        command_loader,
+        config,
+        logger,
+        root_dir,
+        lease_seconds=300,
+        max_workers=8,
+        heartbeat_interval=30,
+        notify_manager=None,
+    ):
         self.storage = storage
         self.queue = QueueStorage(config)
         self.command_loader = command_loader
@@ -49,8 +57,7 @@ class AsyncScheduler:
 
     async def run_loop(self, interval=30):
         self.logger.info(f"[asyncio] Старт, воркеров={self.max_workers}")
-        print(f"⚡ Async scheduler запущен. Воркеров: {self.max_workers}, "
-              f"интервал: {interval}с")
+        print(f"⚡ Async scheduler запущен. Воркеров: {self.max_workers}, интервал: {interval}с")
 
         try:
             while not self._stop.is_set():
@@ -93,20 +100,24 @@ class AsyncScheduler:
                 continue
             if not cron.matches(now):
                 continue
-            if (task.last_run
-                    and task.last_run.replace(second=0, microsecond=0) == now
-                    and task.last_status != JobStatus.RUNNING):
+            if (
+                task.last_run
+                and task.last_run.replace(second=0, microsecond=0) == now
+                and task.last_status != JobStatus.RUNNING
+            ):
                 continue
             if not self.storage.acquire_task(task.id, self.lease_seconds):
                 continue
 
             run_id = self.storage._current_run_id.get(task.id)
-            job_id = self.queue.push(QueueJob(
-                command=task.command,
-                args=task.args or {},
-                priority=50,
-                triggered_by=f"cron:{task.name}",
-            ))
+            job_id = self.queue.push(
+                QueueJob(
+                    command=task.command,
+                    args=task.args or {},
+                    priority=50,
+                    triggered_by=f"cron:{task.name}",
+                )
+            )
             self.logger.info(f"[asyncio] '{task.name}' → queue job #{job_id}")
             self.storage.release_task(task.id, run_id, status='running')
 
@@ -133,18 +144,17 @@ class AsyncScheduler:
             async def heartbeat():
                 while not stop_hb.is_set():
                     try:
-                        await asyncio.wait_for(stop_hb.wait(),
-                                               timeout=self.heartbeat_interval)
+                        await asyncio.wait_for(stop_hb.wait(), timeout=self.heartbeat_interval)
                         return
                     except asyncio.TimeoutError:
                         pass
                     ok = self.queue.heartbeat(
-                        job.id, job.run_id, self.lease_seconds,
+                        job.id,
+                        job.run_id,
+                        self.lease_seconds,
                     )
                     if not ok:
-                        self.logger.warning(
-                            f"[asyncio] Потеряна аренда job #{job.id}"
-                        )
+                        self.logger.warning(f"[asyncio] Потеряна аренда job #{job.id}")
                         return
 
             hb_task = asyncio.create_task(heartbeat())
@@ -164,8 +174,7 @@ class AsyncScheduler:
                 status = JobStatus.FAILED
                 error = f"{e}\n{traceback.format_exc()[:3000]}"
                 exit_code = 1
-                self.logger.error(f"[asyncio] job #{job.id} failed: {e}",
-                                  exc_info=True)
+                self.logger.error(f"[asyncio] job #{job.id} failed: {e}", exc_info=True)
             finally:
                 stop_hb.set()
                 hb_task.cancel()
@@ -179,23 +188,28 @@ class AsyncScheduler:
                     output = output[:100_000] + "\n...[truncated]"
 
                 self.queue.finish(
-                    job.id, job.run_id, status,
-                    result=output, exit_code=exit_code, error=error,
+                    job.id,
+                    job.run_id,
+                    status,
+                    result=output,
+                    exit_code=exit_code,
+                    error=error,
                 )
 
                 if self.notify_manager:
                     try:
                         final = self.queue.get(job.id)
                         if final and final.status in (
-                                JobStatus.DONE, JobStatus.FAILED,
-                                JobStatus.CANCELED, JobStatus.TIMEOUT):
+                            JobStatus.DONE,
+                            JobStatus.FAILED,
+                            JobStatus.CANCELED,
+                            JobStatus.TIMEOUT,
+                        ):
                             self.notify_manager.emit_from_job(final)
                     except Exception as e:
                         self.logger.error(f"[notify] {e}", exc_info=True)
 
-                self.logger.info(
-                    f"[asyncio] job #{job.id} → {status} (exit={exit_code})"
-                )
+                self.logger.info(f"[asyncio] job #{job.id} → {status} (exit={exit_code})")
 
     async def _execute_async(self, job: QueueJob):
         """Запускает execute либо как async-корутину, либо в executor."""
@@ -218,6 +232,7 @@ class AsyncScheduler:
         commands = self.command_loader.load_commands()
         try:
             from lib.commands import BUILTIN_COMMANDS
+
             for name, info in BUILTIN_COMMANDS.items():
                 commands.setdefault(name, info)
         except Exception:
@@ -240,8 +255,11 @@ class AsyncScheduler:
         }
 
         from lib.queue import Dispatcher
+
         ctx['queue'] = Dispatcher(
-            self.queue, config=self.config, triggered_by=f"job#{job.id}",
+            self.queue,
+            config=self.config,
+            triggered_by=f"job#{job.id}",
         )
 
         module = commands[cmd_name].get('module')
@@ -252,8 +270,7 @@ class AsyncScheduler:
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 result = await module.execute_async(ctx)
-            return (0 if result in (None, 0, True) else int(result or 0),
-                    buf.getvalue())
+            return (0 if result in (None, 0, True) else int(result or 0), buf.getvalue())
 
         # Иначе — синхронный execute в отдельном потоке
         loop = asyncio.get_running_loop()
@@ -262,7 +279,6 @@ class AsyncScheduler:
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
                 result = execute(ctx)
-            return (0 if result in (None, 0, True) else int(result or 0),
-                    buf.getvalue())
+            return (0 if result in (None, 0, True) else int(result or 0), buf.getvalue())
 
         return await loop.run_in_executor(None, _run_sync)

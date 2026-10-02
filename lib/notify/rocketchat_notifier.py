@@ -10,6 +10,7 @@ Rocket.Chat — Incoming Webhook.
     on: [failed, timeout, canceled]
     attachment_color: "#ff0000"
 """
+
 import json
 
 from .base import BaseNotifier, NotifyEvent
@@ -32,14 +33,17 @@ class RocketChatNotifier(BaseNotifier):
     def _http_post(self, url, payload):
         try:
             import requests
+
             r = requests.post(url, json=payload, timeout=10)
             r.raise_for_status()
             return r.text
         except ImportError:
             import urllib.request
+
             data = json.dumps(payload).encode('utf-8')
             req = urllib.request.Request(
-                url, data=data,
+                url,
+                data=data,
                 headers={'Content-Type': 'application/json'},
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -61,8 +65,13 @@ class RocketChatNotifier(BaseNotifier):
         if event.args:
             fields.append({'title': 'Аргументы', 'value': str(event.args), 'short': False})
         if event.duration_sec is not None:
-            fields.append({'title': 'Длительность',
-                           'value': f"{round(event.duration_sec, 2)}с", 'short': True})
+            fields.append(
+                {
+                    'title': 'Длительность',
+                    'value': f"{round(event.duration_sec, 2)}с",
+                    'short': True,
+                }
+            )
 
         text = f"*{title}*"
         if event.error:
@@ -71,11 +80,13 @@ class RocketChatNotifier(BaseNotifier):
         payload = {
             'alias': self.alias,
             'text': text,
-            'attachments': [{
-                'color': self.color if not event.ok else '#2ecc71',
-                'fields': fields,
-                'footer': 'Homer',
-            }],
+            'attachments': [
+                {
+                    'color': self.color if not event.ok else '#2ecc71',
+                    'fields': fields,
+                    'footer': 'Homer',
+                }
+            ],
         }
         if self.channel:
             payload['channel'] = self.channel

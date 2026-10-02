@@ -1,8 +1,9 @@
 """
 Драйвер SQLite.
 """
-import sqlite3
+
 from pathlib import Path
+import sqlite3
 
 from .base import BaseDB
 

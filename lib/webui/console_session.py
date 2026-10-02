@@ -20,6 +20,7 @@
         {'type': 'signal', 'signal': 'SIGINT'}
         {'type': 'stdin_data', 'data': '...'}   # опционально, для shell-команд
 """
+
 from __future__ import annotations
 
 import builtins
@@ -28,8 +29,8 @@ import queue
 import sys
 import threading
 import traceback
+from typing import Optional
 import uuid
-from typing import Any, Optional
 
 
 class _OutputStream(io.TextIOBase):
@@ -64,12 +65,17 @@ class ConsoleSession:
         session.send_input('q1', 'yes')            # ответ на input()
     """
 
-    def __init__(self, context, command, args,
-                 history: 'HistoryStorage | None' = None,
-                 user: str = 'anonymous',
-                 client_ip: str | None = None,
-                 user_agent: str | None = None,
-                 session_id: str | None = None):
+    def __init__(
+        self,
+        context,
+        command,
+        args,
+        history: HistoryStorage | None = None,
+        user: str = 'anonymous',
+        client_ip: str | None = None,
+        user_agent: str | None = None,
+        session_id: str | None = None,
+    ):
         self.context = context
         self.command = command
         self.args = args
@@ -96,7 +102,9 @@ class ConsoleSession:
 
     def start(self):
         self._thread = threading.Thread(
-            target=self._run, daemon=True, name=f'homer-console-{self.command}',
+            target=self._run,
+            daemon=True,
+            name=f'homer-console-{self.command}',
         )
         self._thread.start()
 
@@ -136,11 +144,13 @@ class ConsoleSession:
             if sum(len(x) for x in self._output_buffer) < 500_000:
                 self._output_buffer.append(data)
 
-        self._messages.put({
-            'type': 'output',
-            'stream': stream_name,
-            'data': data,
-        })
+        self._messages.put(
+            {
+                'type': 'output',
+                'stream': stream_name,
+                'data': data,
+            }
+        )
 
     def _next_input_id(self) -> str:
         with self._input_lock:
@@ -156,11 +166,13 @@ class ConsoleSession:
         waiter: queue.Queue[str] = queue.Queue()
         self._input_waiters[request_id] = waiter
 
-        self._messages.put({
-            'type': 'input_request',
-            'id': request_id,
-            'prompt': prompt or '',
-        })
+        self._messages.put(
+            {
+                'type': 'input_request',
+                'id': request_id,
+                'prompt': prompt or '',
+            }
+        )
 
         try:
             # Ждём ответа; но также позволяем остановить сессию
@@ -201,6 +213,7 @@ class ConsoleSession:
         commands = loader.load_commands()
         try:
             from lib.commands import BUILTIN_COMMANDS
+
             for name, info in BUILTIN_COMMANDS.items():
                 commands.setdefault(name, info)
         except Exception:
@@ -208,14 +221,14 @@ class ConsoleSession:
 
         cmd_name = parser.command
         if cmd_name not in commands:
-            self._messages.put({'type': 'error',
-                                'message': f"Команда '{cmd_name}' не найдена"})
+            self._messages.put({'type': 'error', 'message': f"Команда '{cmd_name}' не найдена"})
             self._messages.put({'type': 'done', 'exit_code': 2})
             self._exit_code = 2
             return
 
         # Ленивая очередь
-        from lib.queue import QueueStorage, Dispatcher
+        from lib.queue import Dispatcher, QueueStorage
+
         _storage = None
         _dispatcher = None
 
@@ -225,7 +238,8 @@ class ConsoleSession:
                 if _dispatcher is None:
                     _storage = QueueStorage(config)
                     _dispatcher = Dispatcher(
-                        _storage, config=config,
+                        _storage,
+                        config=config,
                         triggered_by=f'webui:{cmd_name}',
                     )
                 return _dispatcher
@@ -256,23 +270,25 @@ class ConsoleSession:
                 )
             except Exception as e:
                 # Не роняем команду из-за истории
-                self._messages.put({'type': 'error',
-                                    'message': f'history.start: {e}'})
-
+                self._messages.put({'type': 'error', 'message': f'history.start: {e}'})
 
         # Перехватываем stdout / stderr / input
         old_stdout, old_stderr, old_input = (
-            sys.stdout, sys.stderr, builtins.input,
+            sys.stdout,
+            sys.stderr,
+            builtins.input,
         )
         sys.stdout = _OutputStream(self, 'stdout')
         sys.stderr = _OutputStream(self, 'stderr')
         builtins.input = self._fake_input
 
-        self._messages.put({
-            'type': 'started',
-            'command': cmd_name,
-            'args': parser.options,
-        })
+        self._messages.put(
+            {
+                'type': 'started',
+                'command': cmd_name,
+                'args': parser.options,
+            }
+        )
 
         exit_code = 0
         try:
@@ -287,15 +303,15 @@ class ConsoleSession:
                 exit_code = 0
         except KeyboardInterrupt:
             exit_code = 130
-            self._messages.put({'type': 'output', 'stream': 'stderr',
-                                'data': '\n[прервано пользователем]\n'})
+            self._messages.put(
+                {'type': 'output', 'stream': 'stderr', 'data': '\n[прервано пользователем]\n'}
+            )
         except SystemExit as e:
             exit_code = int(e.code) if isinstance(e.code, int) else 1
         except Exception as e:
             exit_code = 1
             tb = traceback.format_exc()
-            self._messages.put({'type': 'output', 'stream': 'stderr',
-                                'data': tb})
+            self._messages.put({'type': 'output', 'stream': 'stderr', 'data': tb})
             self._messages.put({'type': 'error', 'message': str(e)})
         finally:
             sys.stdout = old_stdout
@@ -314,8 +330,8 @@ class ConsoleSession:
                         input_log=self._input_history,
                     )
                 except Exception as e:
-                    self._messages.put({'type': 'error',
-                                        'message': f'history.finish: {e}'})
+                    self._messages.put({'type': 'error', 'message': f'history.finish: {e}'})
 
-            self._messages.put({'type': 'done', 'exit_code': exit_code,
-                                'history_id': self._history_id})
+            self._messages.put(
+                {'type': 'done', 'exit_code': exit_code, 'history_id': self._history_id}
+            )

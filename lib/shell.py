@@ -4,11 +4,12 @@
 Позволяет вводить команды Homer без перезапуска приложения,
 а также выполнять произвольный Python-код в контексте приложения.
 """
+
 import code
 import shlex
 import traceback
 
-from lib.console import console, Color
+from lib.console import Color, console
 
 
 class HomerShell(code.InteractiveConsole):
@@ -48,7 +49,7 @@ class HomerShell(code.InteractiveConsole):
         try:
             parts = shlex.split(line)
         except ValueError as e:
-            console.error(f"Ошибка парсинга: {e}")
+            console.error(f"Parsing error: {e}")
             return
 
         if not parts:
@@ -63,6 +64,7 @@ class HomerShell(code.InteractiveConsole):
         # Плюс встроенные
         try:
             from lib.commands import BUILTIN_COMMANDS
+
             for name, info in BUILTIN_COMMANDS.items():
                 commands.setdefault(name, info)
         except Exception:
@@ -70,13 +72,14 @@ class HomerShell(code.InteractiveConsole):
 
         cmd_name = parser.command
         if cmd_name not in commands:
-            console.error(f"Команда '{cmd_name}' не найдена. Используйте :list")
+            console.error(f"The command '{cmd_name}' was not found. Use :list")
             return
 
         cmd_info = commands[cmd_name]
 
         # Ленивый queue — как в homer
-        from lib.queue import QueueStorage, Dispatcher
+        from lib.queue import Dispatcher, QueueStorage
+
         _storage = None
         _dispatcher = None
 
@@ -108,16 +111,16 @@ class HomerShell(code.InteractiveConsole):
         }
 
         try:
-            console.info(f"Запуск: {console.bold(cmd_name)}")
+            console.info(f"Launch: {console.bold(cmd_name)}")
             result = cmd_info['execute'](cmd_context)
             if result:
-                console.warning(f"Команда завершена с кодом {result}")
+                console.warning(f"The command is completed with code {result}")
             else:
-                console.success("Команда завершена успешно")
+                console.success("The command has been completed successfully.")
         except KeyboardInterrupt:
-            console.warning("Прервано пользователем")
+            console.warning("Interrupted by the user")
         except Exception as e:
-            console.error(f"Ошибка выполнения: {e}")
+            console.error(f"Execution error: {e}")
             traceback.print_exc()
 
     # ─────────────────── Перехват ввода ───────────────────
@@ -133,10 +136,22 @@ class HomerShell(code.InteractiveConsole):
         # Прямой ввод команды Homer (однострочный, без "=" и ":")
         if (
             stripped
-            and not stripped.startswith((
-                'import', 'from', 'def ', 'class ', 'for ', 'if ',
-                'while ', 'with ', 'try', '@', '#', 'print(',
-            ))
+            and not stripped.startswith(
+                (
+                    'import',
+                    'from',
+                    'def ',
+                    'class ',
+                    'for ',
+                    'if ',
+                    'while ',
+                    'with ',
+                    'try',
+                    '@',
+                    '#',
+                    'print(',
+                )
+            )
             and '=' not in stripped
             and not stripped.endswith(':')
         ):
@@ -144,6 +159,7 @@ class HomerShell(code.InteractiveConsole):
             known = self.command_loader.load_commands()
             try:
                 from lib.commands import BUILTIN_COMMANDS
+
                 for name in BUILTIN_COMMANDS:
                     known.setdefault(name, {})
             except Exception:
@@ -151,9 +167,7 @@ class HomerShell(code.InteractiveConsole):
 
             # Совпадение: точное имя или пространство имён
             if first in known or (
-                ':' in first and first.split(':')[0] in {
-                    n.split(':')[0] for n in known
-                }
+                ':' in first and first.split(':')[0] in {n.split(':')[0] for n in known}
             ):
                 self.run_command(stripped)
                 return False
@@ -168,10 +182,10 @@ class HomerShell(code.InteractiveConsole):
         arg = parts[1] if len(parts) > 1 else ''
 
         if cmd in ('exit', 'quit', 'q'):
-            console.comment("Пока!")
+            console.comment("Bye!")
             raise SystemExit(0)
 
-        elif cmd in ('help', 'h', '?'):
+        if cmd in ('help', 'h', '?'):
             self._print_help()
 
         elif cmd in ('list', 'ls'):
@@ -179,13 +193,13 @@ class HomerShell(code.InteractiveConsole):
 
         elif cmd in ('run', 'r'):
             if not arg:
-                console.error("Использование: :run <команда> [аргументы]")
+                console.error("Usage: :run <command> [arguments]")
             else:
                 self.run_command(arg)
 
         elif cmd == 'reload':
             self.config.load()
-            console.success("Конфиг перезагружен")
+            console.success("The config has been reloaded.")
 
         elif cmd in ('ctx', 'context'):
             console.key_value('config', self.config.config_path)
@@ -196,43 +210,41 @@ class HomerShell(code.InteractiveConsole):
             print('\033[2J\033[H', end='')
 
         else:
-            console.error(f"Неизвестная команда: :{cmd}. Введите :help")
+            console.error(f"Unknown command: :{cmd}. Enter :help")
 
     def _print_help(self):
-        console.banner("Homer Shell", "интерактивный режим",
-                       color=Color.BRIGHT_MAGENTA)
-        console.section("Специальные команды")
-        console.list_item(':help', 'справка')
-        console.list_item(':list', 'список команд Homer')
-        console.list_item(':run <cmd> [args]', 'выполнить команду Homer')
-        console.list_item(':reload', 'перечитать config.yml')
-        console.list_item(':ctx', 'показать текущий контекст')
-        console.list_item(':clear', 'очистить экран')
-        console.list_item(':exit / :quit', 'выйти')
+        console.banner("Homer Shell", "interactive mode", color=Color.BRIGHT_MAGENTA)
+        console.section("Special commands")
+        console.list_item(':help', 'help')
+        console.list_item(':list', 'command list')
+        console.list_item(':run <cmd> [args]', 'Execute the Homer command.')
+        console.list_item(':reload', 'reread config.yml')
+        console.list_item(':ctx', 'show the current context')
+        console.list_item(':clear', 'clear the screen')
+        console.list_item(':exit / :quit', 'exit')
         console.newline()
-        console.section("Python-режим")
-        console.comment(
-            "  Доступны: config, console, logger, Color, commands, ctx, root_dir"
-        )
-        console.comment("  Пример: print(config.get('app.name'))")
+        console.section("Python mode")
+        console.comment("  Available: config, console, logger, Color, commands, ctx, root_dir")
+        console.comment("  Example: print(config.get('app.name'))")
         console.newline()
-        console.section("Команды Homer")
+        console.section("Homer teams")
         console.comment("  Можно вводить напрямую, например:")
         console.comment("    idm --user=admin --ver=16")
-        console.comment("  или через префикс :run")
+        console.comment("  or via a prefix :run")
         console.newline()
 
     def _print_commands(self):
         commands = self.command_loader.load_commands()
         try:
             from lib.commands import BUILTIN_COMMANDS
+
             for name, info in BUILTIN_COMMANDS.items():
                 commands.setdefault(name, info)
         except Exception:
             pass
 
         if not commands:
-            console.warning("Нет доступных команд")
+            console.warning("There are no available commands.")
             return
 
         rows = []
@@ -240,7 +252,7 @@ class HomerShell(code.InteractiveConsole):
             rows.append([name, info.get('description', '—')])
 
         console.table(
-            headers=['Команда', 'Описание'],
+            headers=['Command', 'Description'],
             rows=rows,
             align=['l', 'l'],
         )
@@ -248,8 +260,7 @@ class HomerShell(code.InteractiveConsole):
     # ─────────────────── Запуск ───────────────────
 
     def interact(self, banner=None):
-        console.banner("Homer Shell",
-                       "Введите :help для справки, :exit для выхода")
+        console.banner("Homer Shell", "Enter :help for help, :exit to exit")
 
         try:
             super().interact(banner='', exitmsg='')
@@ -257,4 +268,4 @@ class HomerShell(code.InteractiveConsole):
             pass
         except KeyboardInterrupt:
             console.newline()
-            console.comment("Прервано (Ctrl+C). Введите :exit для выхода.")
+            console.comment("Interrupted (Ctrl+C). Enter :exit to exit.")

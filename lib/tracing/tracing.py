@@ -1,6 +1,7 @@
 """
 Настройка OpenTelemetry.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -12,10 +13,11 @@ _log = logging.getLogger('homer.tracing')
 
 try:
     from opentelemetry import trace
+    from opentelemetry.sdk.resources import Resource
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.sdk.resources import Resource
     from opentelemetry.trace import SpanKind, Status, StatusCode
+
     _HAS_OTEL = True
 except ImportError:
     _HAS_OTEL = False
@@ -58,22 +60,27 @@ def setup_tracing(config, service_name: str = 'homer') -> bool:
     service_name = cfg.get('service_name', service_name)
     environment = cfg.get('environment', os.environ.get('ENV', 'dev'))
 
-    resource = Resource.create({
-        'service.name': service_name,
-        'service.version': config.get('app.version', '1.0.0'),
-        'deployment.environment': environment,
-    })
+    resource = Resource.create(
+        {
+            'service.name': service_name,
+            'service.version': config.get('app.version', '1.0.0'),
+            'deployment.environment': environment,
+        }
+    )
 
     # Семплер
     ratio = float(cfg.get('sample_ratio', 1.0))
     if ratio >= 1.0:
         from opentelemetry.sdk.trace.sampling import ALWAYS_ON
+
         sampler = ALWAYS_ON
     elif ratio <= 0.0:
         from opentelemetry.sdk.trace.sampling import ALWAYS_OFF
+
         sampler = ALWAYS_OFF
     else:
         from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
+
         sampler = TraceIdRatioBased(ratio)
 
     provider = TracerProvider(resource=resource, sampler=sampler)
@@ -89,6 +96,7 @@ def setup_tracing(config, service_name: str = 'homer') -> bool:
             from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
                 OTLPSpanExporter,
             )
+
             exporters.append(OTLPSpanExporter(endpoint=endpoint or 'localhost:4317'))
         except ImportError:
             _log.warning("OTLP exporter не установлен")
@@ -96,25 +104,32 @@ def setup_tracing(config, service_name: str = 'homer') -> bool:
     elif exporter_name == 'jaeger':
         try:
             from opentelemetry.exporter.jaeger.thrift import JaegerExporter
-            exporters.append(JaegerExporter(
-                agent_host_name=cfg.get('jaeger_host', 'localhost'),
-                agent_port=cfg.get('jaeger_port', 6831),
-            ))
+
+            exporters.append(
+                JaegerExporter(
+                    agent_host_name=cfg.get('jaeger_host', 'localhost'),
+                    agent_port=cfg.get('jaeger_port', 6831),
+                )
+            )
         except ImportError:
             _log.warning("Jaeger exporter не установлен")
 
     elif exporter_name == 'zipkin':
         try:
             from opentelemetry.exporter.zipkin.json import ZipkinExporter
-            exporters.append(ZipkinExporter(
-                endpoint=cfg.get('zipkin_endpoint', 'http://localhost:9411/api/v2/spans'),
-            ))
+
+            exporters.append(
+                ZipkinExporter(
+                    endpoint=cfg.get('zipkin_endpoint', 'http://localhost:9411/api/v2/spans'),
+                )
+            )
         except ImportError:
             _log.warning("Zipkin exporter не установлен")
 
     # Опционально — дублирование в консоль
     if cfg.get('console', False):
         from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+
         exporters.append(ConsoleSpanExporter())
 
     for exp in exporters:
@@ -126,8 +141,10 @@ def setup_tracing(config, service_name: str = 'homer') -> bool:
     _tracer = trace.get_tracer(service_name)
     _enabled = True
 
-    _log.info(f"Трассировка включена: exporter={exporter_name}, "
-              f"endpoint={endpoint}, service={service_name}")
+    _log.info(
+        f"Трассировка включена: exporter={exporter_name}, "
+        f"endpoint={endpoint}, service={service_name}"
+    )
     return True
 
 
@@ -143,9 +160,15 @@ def shutdown_tracing():
 
 # ─────────── Основной API ───────────
 
+
 @contextlib.contextmanager
-def span(name: str, *, kind: str = 'internal', attributes: Optional[dict] = None,
-         record_exception: bool = True):
+def span(
+    name: str,
+    *,
+    kind: str = 'internal',
+    attributes: Optional[dict] = None,
+    record_exception: bool = True,
+):
     """
     Контекстный менеджер для спана.
 

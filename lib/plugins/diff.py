@@ -8,25 +8,24 @@ Diff между двумя состояниями плагина.
 
 Формат: unified diff по файлам + сводка.
 """
+
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import difflib
 import hashlib
-import subprocess
-from dataclasses import dataclass, field
 from pathlib import Path
+import subprocess
 from typing import Optional
 
-
-EXCLUDE_DIRS = ('__pycache__', '.git', '.cache', '.mypy_cache',
-                '.pytest_cache', '.ruff_cache')
+EXCLUDE_DIRS = ('__pycache__', '.git', '.cache', '.mypy_cache', '.pytest_cache', '.ruff_cache')
 EXCLUDE_SUFFIXES = ('.pyc', '.pyo', '.swp')
 
 
 @dataclass
 class FileDiff:
-    status: str                    # 'added' | 'modified' | 'deleted'
-    path: str                      # относительный путь от корня плагина
+    status: str  # 'added' | 'modified' | 'deleted'
+    path: str  # относительный путь от корня плагина
     old_size: Optional[int] = None
     new_size: Optional[int] = None
     old_checksum: Optional[str] = None
@@ -46,7 +45,7 @@ class PluginDiff:
     requires_before: list[str] = field(default_factory=list)
     requires_after: list[str] = field(default_factory=list)
     requires_changed: bool = False
-    source: str = ''               # 'lock' | 'git' | 'disk'
+    source: str = ''  # 'lock' | 'git' | 'disk'
 
 
 class PluginDiffer:
@@ -69,16 +68,17 @@ class PluginDiffer:
         """
         if self.lock and self.lock.exists():
             data = self.lock.load()
-            has = any(p['name'] == plugin_dir.name
-                      for p in data.get('plugins', []))
+            has = any(p['name'] == plugin_dir.name for p in data.get('plugins', []))
             if has:
                 return 'lock'
         # git?
         try:
             proc = subprocess.run(
                 ['git', 'rev-parse', '--is-inside-work-tree'],
-                cwd=str(plugin_dir), capture_output=True,
-                timeout=5, text=True,
+                cwd=str(plugin_dir),
+                capture_output=True,
+                timeout=5,
+                text=True,
             )
             if proc.returncode == 0 and proc.stdout.strip() == 'true':
                 return 'git'
@@ -88,11 +88,14 @@ class PluginDiffer:
 
     # ─────────── Diff ───────────
 
-    def diff(self, plugin_dir: Path,
-             from_version: Optional[str] = None,
-             to_version: Optional[str] = None,
-             include_content_diff: bool = False,
-             max_file_size: int = 1_000_000) -> PluginDiff:
+    def diff(
+        self,
+        plugin_dir: Path,
+        from_version: Optional[str] = None,
+        to_version: Optional[str] = None,
+        include_content_diff: bool = False,
+        max_file_size: int = 1_000_000,
+    ) -> PluginDiff:
         plugin_dir = Path(plugin_dir)
         source = self.source_for(plugin_dir)
         result = PluginDiff(
@@ -105,6 +108,7 @@ class PluginDiffer:
         # Метаданные плагина
         try:
             from .plugin import PluginInfo
+
             info = PluginInfo.from_dir(plugin_dir)
             if not result.to_version:
                 result.to_version = info.version
@@ -116,22 +120,19 @@ class PluginDiffer:
         self._diff_migrations(plugin_dir, result)
 
         if source == 'lock':
-            self._diff_vs_lock(plugin_dir, result,
-                               include_content_diff, max_file_size)
+            self._diff_vs_lock(plugin_dir, result, include_content_diff, max_file_size)
             # requires из lock
             data = self.lock.load()
-            lp = next((p for p in data.get('plugins', [])
-                       if p['name'] == plugin_dir.name), None)
+            lp = next((p for p in data.get('plugins', []) if p['name'] == plugin_dir.name), None)
             if lp:
                 result.requires_before = list(lp.get('requires') or [])
                 if not result.from_version:
                     result.from_version = lp.get('version')
-            result.requires_changed = (
-                sorted(result.requires_before) != sorted(result.requires_after)
+            result.requires_changed = sorted(result.requires_before) != sorted(
+                result.requires_after
             )
         elif source == 'git':
-            self._diff_vs_git(plugin_dir, result,
-                              include_content_diff, max_file_size)
+            self._diff_vs_git(plugin_dir, result, include_content_diff, max_file_size)
         else:
             # Не с чем сравнивать — только отчёт по метаданным
             pass
@@ -140,11 +141,11 @@ class PluginDiffer:
 
     # ─────────── vs lock ───────────
 
-    def _diff_vs_lock(self, plugin_dir: Path, result: PluginDiff,
-                      include_content_diff: bool, max_file_size: int):
+    def _diff_vs_lock(
+        self, plugin_dir: Path, result: PluginDiff, include_content_diff: bool, max_file_size: int
+    ):
         data = self.lock.load()
-        lp = next((p for p in data.get('plugins', [])
-                   if p['name'] == plugin_dir.name), None)
+        lp = next((p for p in data.get('plugins', []) if p['name'] == plugin_dir.name), None)
         if not lp:
             return
 
@@ -164,8 +165,9 @@ class PluginDiffer:
 
     # ─────────── vs git ───────────
 
-    def _diff_vs_git(self, plugin_dir: Path, result: PluginDiff,
-                     include_content_diff: bool, max_file_size: int):
+    def _diff_vs_git(
+        self, plugin_dir: Path, result: PluginDiff, include_content_diff: bool, max_file_size: int
+    ):
         """
         Сравниваем текущий рабочий каталог с HEAD (или с указанным коммитом).
         """
@@ -173,8 +175,10 @@ class PluginDiffer:
         try:
             proc = subprocess.run(
                 ['git', 'diff', '--name-status', 'HEAD', '--', '.'],
-                cwd=str(plugin_dir), capture_output=True,
-                timeout=30, text=True,
+                cwd=str(plugin_dir),
+                capture_output=True,
+                timeout=30,
+                text=True,
             )
         except Exception:
             return
@@ -207,12 +211,10 @@ class PluginDiffer:
 
             # Содержимое
             if include_content_diff and status in ('a', 'm'):
-                fd.unified = self._git_content_diff(plugin_dir, path,
-                                                    status == 'a')
+                fd.unified = self._git_content_diff(plugin_dir, path, status == 'a')
             result.files.append(fd)
 
-    def _git_content_diff(self, plugin_dir: Path, path: str,
-                          is_new: bool) -> Optional[str]:
+    def _git_content_diff(self, plugin_dir: Path, path: str, is_new: bool) -> Optional[str]:
         try:
             if is_new:
                 # Файл не в HEAD — показываем его целиком
@@ -221,15 +223,20 @@ class PluginDiffer:
                     return None
                 text = p.read_text(encoding='utf-8', errors='replace')
                 lines = text.splitlines(keepends=True)
-                return ''.join(difflib.unified_diff(
-                    [], lines,
-                    fromfile='/dev/null',
-                    tofile=f'b/{path}',
-                ))
+                return ''.join(
+                    difflib.unified_diff(
+                        [],
+                        lines,
+                        fromfile='/dev/null',
+                        tofile=f'b/{path}',
+                    )
+                )
             proc = subprocess.run(
                 ['git', 'diff', 'HEAD', '--', path],
-                cwd=str(plugin_dir), capture_output=True,
-                timeout=30, text=True,
+                cwd=str(plugin_dir),
+                capture_output=True,
+                timeout=30,
+                text=True,
             )
             return proc.stdout or None
         except Exception:
@@ -246,15 +253,11 @@ class PluginDiffer:
             return
 
         data = self.lock.load()
-        lp = next((p for p in data.get('plugins', [])
-                   if p['name'] == plugin_dir.name), None)
+        lp = next((p for p in data.get('plugins', []) if p['name'] == plugin_dir.name), None)
         if not lp:
             return
 
-        locked_migs = {
-            (m['driver'], m['file']): m['checksum']
-            for m in lp.get('migrations', [])
-        }
+        locked_migs = {(m['driver'], m['file']): m['checksum'] for m in lp.get('migrations', [])}
 
         mig_dir = plugin_dir / 'migrations'
         if not mig_dir.exists():

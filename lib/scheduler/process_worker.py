@@ -1,11 +1,12 @@
 """
 Top-level worker для ProcessPoolExecutor.
 """
+
 import io
+from pathlib import Path
 import sys
 import time
 import traceback
-from pathlib import Path
 
 
 def run_job_in_process(payload: dict) -> dict:
@@ -19,11 +20,11 @@ def run_job_in_process(payload: dict) -> dict:
     buf = io.StringIO()
 
     try:
-        from lib.config import Config
-        from lib.logger import Logger
         from lib.arguments import ArgumentParser
         from lib.command_loader import CommandLoader
-        from lib.queue import QueueStorage, Dispatcher
+        from lib.config import Config
+        from lib.logger import Logger
+        from lib.queue import Dispatcher, QueueStorage
 
         config = Config(Path(payload['config_path']))
         logger = Logger(config, root_dir / 'logs')
@@ -45,6 +46,7 @@ def run_job_in_process(payload: dict) -> dict:
         commands = loader.load_commands()
         try:
             from lib.commands import BUILTIN_COMMANDS
+
             for name, info in BUILTIN_COMMANDS.items():
                 commands.setdefault(name, info)
         except Exception:
@@ -76,6 +78,7 @@ def run_job_in_process(payload: dict) -> dict:
         }
 
         import contextlib
+
         with contextlib.redirect_stdout(buf):
             result = commands[cmd_name]['execute'](ctx)
 

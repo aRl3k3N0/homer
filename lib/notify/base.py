@@ -1,10 +1,13 @@
 """
 Интерфейс нотификатора.
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
+
 
 @dataclass
 class NotifyEvent:
@@ -30,8 +33,7 @@ class NotifyEvent:
     def short_command(self) -> str:
         if not self.args:
             return self.command
-        return (f"{self.command} ("
-                + ", ".join(f"{k}={v}" for k, v in self.args.items()) + ")")
+        return f"{self.command} (" + ", ".join(f"{k}={v}" for k, v in self.args.items()) + ")"
 
 
 class BaseNotifier:

@@ -1,26 +1,28 @@
 """
 Метаданные и состояние плагина.
 """
+
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
+import json
 from pathlib import Path
 from typing import Optional
 
 
 class PluginState:
-    DISCOVERED = 'discovered'   # найден, но не загружен
-    LOADED     = 'loaded'       # __init__.py успешно выполнен
-    ENABLED    = 'enabled'      # включён в config.yml
-    DISABLED   = 'disabled'     # выключен в config.yml
-    ERROR      = 'error'        # ошибка загрузки/инициализации
-    MIGRATED   = 'migrated'     # миграции применены
+    DISCOVERED = 'discovered'  # найден, но не загружен
+    LOADED = 'loaded'  # __init__.py успешно выполнен
+    ENABLED = 'enabled'  # включён в config.yml
+    DISABLED = 'disabled'  # выключен в config.yml
+    ERROR = 'error'  # ошибка загрузки/инициализации
+    MIGRATED = 'migrated'  # миграции применены
 
 
 @dataclass
 class PluginInfo:
     """Метаданные плагина из plugin.json."""
+
     name: str
     version: str = '0.0.0'
     description: str = ''
@@ -34,7 +36,7 @@ class PluginInfo:
     error: Optional[str] = None
 
     @classmethod
-    def from_dir(cls, plugin_dir: Path) -> 'PluginInfo':
+    def from_dir(cls, plugin_dir: Path) -> PluginInfo:
         manifest = plugin_dir / 'plugin.json'
         if not manifest.exists():
             raise FileNotFoundError(f"Нет plugin.json в {plugin_dir}")

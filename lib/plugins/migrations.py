@@ -9,18 +9,18 @@
 - Порядок: сортировка по номеру в имени файла.
 - Применяется один раз; повторный запуск — no-op.
 - checksum позволяет предупредить, что файл миграции изменили после применения.
-- Транзакция: для SQLite/Postgres/Oracle — по умолчанию; для MySQL — без DDL-транзакции.
+- Транзакция: SQLite/Postgres поддерживают откат DDL; Oracle/MySQL могут
+  фиксировать DDL независимо от явного rollback.
 """
+
 from __future__ import annotations
 
-import hashlib
-import re
 from datetime import datetime
+import hashlib
 from pathlib import Path
-from typing import Optional
+import re
 
 from .plugin import PluginInfo
-
 
 DDL_MIGRATIONS = {
     'sqlite': """
@@ -70,6 +70,8 @@ DDL_MIGRATIONS = {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     """,
 }
+DDL_MIGRATIONS['postgresql'] = DDL_MIGRATIONS['postgres']
+DDL_MIGRATIONS['mariadb'] = DDL_MIGRATIONS['mysql']
 
 
 class MigrationRunner:
@@ -141,12 +143,14 @@ class MigrationRunner:
         result = []
         for f in files:
             name = f.name
-            result.append({
-                'name': name,
-                'applied': name in applied,
-                'applied_at': None,
-                'checksum': self._checksum(f),
-            })
+            result.append(
+                {
+                    'name': name,
+                    'applied': name in applied,
+                    'applied_at': None,
+                    'checksum': self._checksum(f),
+                }
+            )
         return result
 
     # ─────────── Внутреннее ───────────
@@ -174,12 +178,12 @@ class MigrationRunner:
         checksum = self._checksum(path)
         statements = _split_sql(sql, self.driver)
 
-        # DDL-транзакции: SQLite/Postgres/Oracle поддерживают; MySQL — нет
-        use_tx = self.driver in ('sqlite', 'postgres', 'oracle')
+        # Oracle и MySQL фиксируют многие DDL-команды независимо от транзакции.
+        use_tx = self.driver in ('sqlite', 'postgres', 'postgresql')
 
         try:
             if use_tx:
-                # Простейшая эмуляция: BEGIN/COMMIT
+                self.db.execute('BEGIN')
                 for stmt in statements:
                     self.db.execute(stmt)
                 self._mark_applied(path.name, checksum)
@@ -226,9 +230,13 @@ class MigrationRunner:
             [self.plugin.name, self.driver],
             dictionary=True,
         )
-        return {(r['migration_name'] if isinstance(r, dict) else r[0]):
-                (r['checksum'] if isinstance(r, dict) else r[1]) or ''
-                for r in rows}
+        return {
+            (r['migration_name'] if isinstance(r, dict) else r[0]): (
+                r['checksum'] if isinstance(r, dict) else r[1]
+            )
+            or ''
+            for r in rows
+        }
 
     def _mark_applied(self, name: str, checksum: str):
         self.db.execute(
@@ -262,4 +270,5 @@ def _numeric_prefix(name: str) -> int:
 def _split_sql(text: str, driver: str) -> list[str]:
     """См. lib/plugins/manager._split_sql — вынесем в общий модуль."""
     from .manager import _split_sql as _split
+
     return _split(text, driver)

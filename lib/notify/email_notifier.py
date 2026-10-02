@@ -1,6 +1,7 @@
 """
 Email-нотификатор.
 """
+
 from .base import BaseNotifier, NotifyEvent
 
 
@@ -23,6 +24,7 @@ class EmailNotifier(BaseNotifier):
                 self._mailer = self.mailer_factory()
             else:
                 from lib.mailer import Mailer
+
                 templates = (self.root_dir / 'email') if self.root_dir else None
                 self._mailer = Mailer(self.config, templates)
         return self._mailer
@@ -52,6 +54,8 @@ class EmailNotifier(BaseNotifier):
             'ok': event.ok,
         }
         self._get_mailer().send(
-            to=self.to, template_name=template,
-            context=context, from_addr=self.from_addr,
+            to=self.to,
+            template_name=template,
+            context=context,
+            from_addr=self.from_addr,
         )

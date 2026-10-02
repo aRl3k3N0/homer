@@ -1,4 +1,5 @@
 """Тесты CommandLoader."""
+
 from lib.command_loader import CommandLoader
 
 

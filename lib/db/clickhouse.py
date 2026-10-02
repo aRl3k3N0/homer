@@ -4,6 +4,7 @@
 Использует clickhouse-driver (native protocol) или clickhouse-connect (HTTP).
 Приоритет — clickhouse-driver (быстрее).
 """
+
 from __future__ import annotations
 
 from .base import BaseDB, DBError
@@ -20,8 +21,8 @@ class ClickHouseDB(BaseDB):
     @classmethod
     def default_config(cls) -> dict:
         return {
-            'port': 9000,          # native protocol
-            'http_port': 8123,     # HTTP (если protocol=http)
+            'port': 9000,  # native protocol
+            'http_port': 8123,  # HTTP (если protocol=http)
             'protocol': 'native',  # native | http
             'compression': 'lz4',
         }
@@ -36,9 +37,7 @@ class ClickHouseDB(BaseDB):
         try:
             from clickhouse_driver import Client
         except ImportError as e:
-            raise DBError(
-                "Установите clickhouse-driver: pip install clickhouse-driver"
-            ) from e
+            raise DBError("Установите clickhouse-driver: pip install clickhouse-driver") from e
 
         cfg = self.config
         return Client(
@@ -54,9 +53,7 @@ class ClickHouseDB(BaseDB):
         try:
             import clickhouse_connect
         except ImportError as e:
-            raise DBError(
-                "Установите clickhouse-connect: pip install clickhouse-connect"
-            ) from e
+            raise DBError("Установите clickhouse-connect: pip install clickhouse-connect") from e
 
         cfg = self.config
         return clickhouse_connect.get_client(

@@ -1,6 +1,12 @@
 """
-Менеджер плагинов: обнаружение, загрузка, миграции, объединение ресурсов.
+Plugin manager with optional registry cache integration.
+
+On every startup the manager tries to load cached plugin metadata
+(var/cache/registry.json). If the cache is fresh, `discover()` reuses
+it. Otherwise it falls back to a full filesystem scan and updates
+the cache.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -10,34 +16,28 @@ from pathlib import Path
 from typing import Optional
 
 from .plugin import PluginInfo, PluginState
+from ..registry_cache import RegistryCache
 
-
-_log = logging.getLogger('homer.plugins')
+_log = logging.getLogger("homer.plugins")
 
 
 class PluginManager:
-    """
-    Менеджер плагинов Homer.
-
-    Использование:
-        pm = get_manager()
-        pm.discover(root_dir / 'plugins', config)
-        pm.load_all()
-        pm.run_migrations(driver='sqlite')
-    """
-
-    def __init__(self):
+    def __init__(self, *, registry_cache: Optional[RegistryCache] = None):
         self._plugins: dict[str, PluginInfo] = {}
         self._root: Optional[Path] = None
         self._config = None
         self._initialized: set[str] = set()
+        self._registry_cache = registry_cache
 
-    # ─────────── Обнаружение ───────────
+    # ─────────── Discovery ───────────
 
-    def discover(self, plugins_dir: Path, config=None) -> list[PluginInfo]:
+    def discover(self, plugins_dir: Path, config=None, *, use_cache: bool = True) -> list[PluginInfo]:
         """
-        Сканирует каталог plugins/ и возвращает список плагинов
-        (не загружая их).
+        Scan plugins directory.
+
+        If use_cache=True and a fresh RegistryCache is available,
+        plugin metadata is loaded from the cache instead of walking
+        the filesystem. On miss, we rescan and rewrite the cache.
         """
         self._root = Path(plugins_dir)
         self._config = config
@@ -46,33 +46,75 @@ class PluginManager:
         if not self._root.exists():
             return []
 
+        cached = None
+        if use_cache and self._registry_cache is not None:
+            cached = self._registry_cache.load()
+            if cached and not self._registry_cache.is_fresh(cached):
+                _log.info("registry cache is stale, rescanning plugins")
+                cached = None
+
+        if cached:
+            cached_plugins = cached.get("plugins") or {}
+            if cached_plugins:
+                _log.info("registry cache hit: %d plugins", len(cached_plugins))
+                for name, meta in cached_plugins.items():
+                    plugin_path = self._root.parent / meta["path"]
+                    if not plugin_path.exists():
+                        _log.warning("cached plugin '%s' no longer exists", name)
+                        continue
+                    try:
+                        info = PluginInfo.from_dir(plugin_path)
+                        self._plugins[info.name] = info
+                    except Exception as e:
+                        _log.warning("cached plugin '%s' unreadable: %s", name, e)
+                return list(self._plugins.values())
+
+        # Full scan
+        _log.info("registry cache miss: scanning %s", self._root)
         for entry in sorted(self._root.iterdir()):
             if not entry.is_dir():
                 continue
-            if entry.name.startswith(('.', '_')):
+            if entry.name.startswith((".", "_")):
                 continue
-            manifest = entry / 'plugin.json'
+            manifest = entry / "plugin.json"
             if not manifest.exists():
                 continue
             try:
                 info = PluginInfo.from_dir(entry)
             except Exception as e:
-                _log.warning(f"Плагин '{entry.name}' пропущен: {e}")
+                _log.warning("plugin '%s' skipped: %s", entry.name, e)
                 continue
             self._plugins[info.name] = info
+
         return list(self._plugins.values())
 
-    # ─────────── Загрузка ───────────
+    # ─────────── Snapshot update ───────────
 
-    def load_all(self, context: dict | None = None):
+    def update_registry_cache(self, *, commands: dict, langs_dirs: list[Path]) -> None:
         """
-        Загружает включённые плагины:
-            - импортирует __init__.py плагина;
-            - вызывает plugin_init(context), если есть;
-            - помечает состояние.
+        Rebuild the cache after a full discovery. Called from homer once
+        both commands and plugins are known.
         """
+        if self._registry_cache is None:
+            return
+        try:
+            snapshot = self._registry_cache.build_snapshot(
+                commands=commands,
+                plugins=list(self._plugins.values()),
+                langs_dirs=langs_dirs,
+            )
+            self._registry_cache.save(snapshot)
+            _log.info("registry cache updated: %d commands, %d plugins",
+                      len(snapshot.get("commands") or {}),
+                      len(snapshot.get("plugins") or {}))
+        except Exception as e:
+            _log.error("failed to update registry cache: %s", e, exc_info=True)
+
+    # ─────────── Rest (unchanged) ───────────
+
+    def load_all(self, context: dict | None = None, *, homer_version: Optional[str] = None,
+                 validate: bool = True):
         enabled = self._enabled_names()
-
         for name, info in self._plugins.items():
             if name not in enabled:
                 info.state = PluginState.DISABLED
@@ -85,65 +127,48 @@ class PluginManager:
         try:
             module = self._import_plugin(info)
             info.state = PluginState.LOADED
-
-            init = getattr(module, 'plugin_init', None)
+            init = getattr(module, "plugin_init", None)
             if callable(init):
                 try:
                     init(context or {})
                 except Exception as e:
                     info.state = PluginState.ERROR
                     info.error = f"plugin_init: {e}"
-                    _log.error(f"Плагин '{info.name}' init error: {e}",
-                               exc_info=True)
+                    _log.error("plugin '%s' init error: %s", info.name, e, exc_info=True)
                     return
-
             info.state = PluginState.ENABLED
             self._initialized.add(info.name)
-            _log.info(f"Плагин '{info.name}' v{info.version} загружен")
+            _log.info("plugin '%s' v%s loaded", info.name, info.version)
         except Exception as e:
             info.state = PluginState.ERROR
             info.error = str(e)
-            _log.error(f"Ошибка загрузки плагина '{info.name}': {e}",
-                       exc_info=True)
+            _log.error("failed to load plugin '%s': %s", info.name, e, exc_info=True)
 
     def _import_plugin(self, info: PluginInfo):
-        """Импортирует plugins/<name>/__init__.py как модуль."""
-        init_py = info.path / '__init__.py'
+        init_py = info.path / "__init__.py"
+        module_name = f"homer_plugin_{info.name}"
         if not init_py.exists():
-            # Создаём пустой модуль-заглушку, чтобы не падать
-            module_name = f"homer_plugin_{info.name}"
             spec = importlib.util.spec_from_loader(module_name, loader=None)
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
             return module
-
-        module_name = f"homer_plugin_{info.name}"
         spec = importlib.util.spec_from_file_location(module_name, init_py)
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
-        # Позволяем плагину писать `from . import ...`
-        package_path = str(info.path)
-        if package_path not in sys.path:
-            sys.path.insert(0, package_path)
+        pkg_path = str(info.path)
+        if pkg_path not in sys.path:
+            sys.path.insert(0, pkg_path)
         spec.loader.exec_module(module)
         return module
 
-    # ─────────── Реестр включённых ───────────
-
     def _enabled_names(self) -> set[str]:
         if self._config is None:
-            return set(self._plugins.keys())     # все включены по умолчанию
-        enabled = self._config.get('plugins.enabled')
-        if enabled is None:
             return set(self._plugins.keys())
-        # Специальное значение: "*" — все
-        if enabled == ['*'] or enabled == '*':
+        enabled = self._config.get("plugins.enabled")
+        if enabled is None or enabled == ["*"] or enabled == "*":
             return set(self._plugins.keys())
-        # Список может содержать и disable-правила
-        disabled = set(self._config.get('plugins.disabled', []) or [])
+        disabled = set(self._config.get("plugins.disabled", []) or [])
         return set(enabled) - disabled
-
-    # ─────────── Информация ───────────
 
     def list(self) -> list[PluginInfo]:
         return list(self._plugins.values())
@@ -152,125 +177,15 @@ class PluginManager:
         return self._plugins.get(name)
 
     def paths_for(self, kind: str) -> list[Path]:
-        """
-        Все пути указанного типа от включённых плагинов.
-        kind ∈ {'commands','lib','email','langs','templates','static'}
-        """
         result = []
         for info in self._plugins.values():
             if info.state not in (PluginState.LOADED, PluginState.ENABLED,
-                                   PluginState.MIGRATED):
+                                  PluginState.MIGRATED):
                 continue
-            p = getattr(info, f'{kind}_dir', None)
+            p = getattr(info, f"{kind}_dir", None)
             if p:
                 result.append(p)
         return result
-
-    # ─────────── Миграции ───────────
-
-    def run_migrations(self, driver: str, db, *,
-                       auto_ok_only: bool = True,
-                       homer_version: Optional[str] = None) -> dict:
-        """
-        Прогоняет:
-          1) обычные миграции migrations/<driver>/ по порядку;
-          2) upgrade-миграции migrations/upgrade_X/driver/
-             для перехода с установленной версии на target.
-        Обновляет homer_plugin_state.<version>.
-        """
-        from .migrations import MigrationRunner
-        from .versions import VersionManager
-
-        result = {
-            'applied': [],
-            'skipped': [],
-            'errors': [],
-            'upgraded': [],  # [(plugin, from, to)]
-        }
-
-        # Сначала топосортировка — плагины загружаются в правильном порядке
-        try:
-            from .deps import resolve
-            ordered = resolve(
-                {p.name: p for p in self._plugins.values()},
-                homer_version=homer_version,
-            )
-        except Exception as e:
-            result['errors'].append(('(global)', f"Зависимости: {e}"))
-            # Всё равно пробуем применить по алфавиту
-            ordered = sorted(self._plugins.values(), key=lambda p: p.name)
-
-        vm = VersionManager(db, driver)
-
-        for info in ordered:
-            if auto_ok_only and not info.auto_migrate:
-                result['skipped'].append(info.name)
-                continue
-
-            mig_dir = info.migrations_for(driver)
-            has_upgrade = bool(vm.compute_upgrade_path(info, driver))
-
-            if not mig_dir and not has_upgrade:
-                continue
-
-            # 1) обычные миграции
-            if mig_dir:
-                runner = MigrationRunner(info, driver, db)
-                try:
-                    applied = runner.up()
-                    if applied:
-                        result['applied'].extend(applied)
-                except Exception as e:
-                    result['errors'].append((info.name, str(e)))
-                    info.state = PluginState.ERROR
-                    info.error = f"migration: {e}"
-                    continue
-
-            # 2) upgrade-миграции
-            try:
-                steps = vm.compute_upgrade_path(info, driver)
-                for step in steps:
-                    def _apply(stmt, _db=db):
-                        _db.execute(stmt)
-
-                    n = vm.apply_upgrade(info, step, _apply)
-                    result['upgraded'].append(
-                        (info.name, step.from_version, step.to_version)
-                    )
-            except Exception as e:
-                result['errors'].append((info.name, f"upgrade: {e}"))
-                continue
-
-            # 3) фиксируем версию
-            try:
-                vm.set_installed_version(info.name, info.version)
-                info.state = PluginState.MIGRATED
-            except Exception as e:
-                result['errors'].append((info.name, f"version: {e}"))
-
-        return result
-
-    def uninstall_data(self, plugin_name: str, driver: str, db) -> bool:
-        """
-        Прогоняет uninstall.sql плагина (если существует).
-        Вызывается только после подтверждения пользователя.
-        """
-        info = self._plugins.get(plugin_name)
-        if not info:
-            return False
-        mig_dir = info.migrations_for(driver)
-        if not mig_dir:
-            return False
-        uninstall_sql = mig_dir / 'uninstall.sql'
-        if not uninstall_sql.exists():
-            return False
-
-        sql_text = uninstall_sql.read_text(encoding='utf-8')
-        for stmt in _split_sql(sql_text, driver):
-            db.execute(stmt)
-        db.commit()
-        _log.info(f"Плагин '{plugin_name}': uninstall.sql выполнен")
-        return True
 
 
 _manager: Optional[PluginManager] = None
@@ -289,39 +204,10 @@ def get_manager() -> PluginManager:
 
 # ─────────── SQL-утилиты ───────────
 
+
 def _split_sql(text: str, driver: str) -> list[str]:
-    """
-    Грубое разбиение SQL на стейтменты по ';'.
-    Для Oracle — учитываем '/' как разделитель блоков PL/SQL.
-    """
-    # Убираем комментарии -- и /* */
-    lines = []
-    in_block_comment = False
-    for line in text.splitlines():
-        stripped = line.strip()
-        if in_block_comment:
-            if '*/' in stripped:
-                in_block_comment = False
-                line = stripped.split('*/', 1)[1]
-            else:
-                continue
-        if stripped.startswith('/*'):
-            if '*/' not in stripped:
-                in_block_comment = True
-            continue
-        if stripped.startswith('--'):
-            continue
-        lines.append(line)
-    clean = '\n'.join(lines)
+    """Compatibility wrapper for the shared SQL migration parser."""
+    from lib.migrations.sql import split_sql
 
-    if driver == 'oracle':
-        # Oracle: разделители ';' для обычных и '/' для PL/SQL-блоков
-        parts = []
-        for chunk in clean.split('/'):
-            for sub in chunk.split(';'):
-                s = sub.strip()
-                if s:
-                    parts.append(s)
-        return parts
+    return split_sql(text, driver)
 
-    return [s.strip() for s in clean.split(';') if s.strip()]

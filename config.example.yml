@@ -2,10 +2,49 @@ app:
   name: Homer
   version: 1.0.0
 
+registry:
+  cache: true                        # enable metadata cache
+  cache_path: var/cache/registry.json
+
+# To disable from CLI without editing config:
+#   HOMER_NO_CACHE=1 ./homer <command>
+# To print startup time and cache status:
+#   HOMER_SHOW_TIME=1 ./homer <command>
+
+paths:
+  # Base directory of the project.
+  # If not set, the parent directory of config.yml is used.
+  # All other paths below are relative to this one unless absolute.
+  base: /data/monitor
+
+  # Runtime paths
+  run_dir: var/run                    # PID files for services
+  cache_dir: var/cache                # registry.json, config.json, i18n pickles
+  log_dir: var/log                    # <command>/<date>.log
+  email_out_dir: var/email            # FileTransport output (mailer file transport)
+
+  # Project resource paths
+  commands_dir: commands              # user commands
+  plugins_dir: plugins                # plugins
+  email_templates_dir: email          # mailer Jinja templates
+  langs_dir: langs                    # i18n translations
+  templates_dir: templates            # Web UI Jinja templates (in addition to lib/webui/templates)
+  static_dir: static                  # Web UI static (in addition to lib/webui/static)
+
 logging:
   level: INFO
   console: true
-  format: text      # text | json
+  format: text          # text | json
+  # Политика хранения логов
+  retention:
+    # По умолчанию — сколько дней хранить
+    default_days: 90
+    # Индивидуально для команд (переопределяет default_days)
+    per_command:
+      webui: 30
+      scheduler: 30
+      notify: 60
+      console: 14
 
 tracing:
   enabled: false
@@ -151,21 +190,45 @@ notifications:
       theme_color: "0078D4"
 
 webui:
-    host: 127.0.0.1
-    port: 8080
-    log_level: info
-    auth:
-      user: admin
-      password: secret    # пусто = без авторизации
-    console:
+  enabled: true
+  host: 0.0.0.0
+  port: 80
+  ssl:
+    enabled: false
+    port: 443
+    cert: /etc/homer/ssl/homer.crt
+    key:  /etc/homer/ssl/homer.key
+    ca:  /etc/homer/ssl/ca.crt          # опционально
+    redirect_http: true                  # HTTP → HTTPS 301
+  auth:
+    # Основной способ — cookie-сессия (страница /login)
+    mode: session                         # session | basic | both
+    session_lifetime: 86400
+    cookie_secure: true                   # только по HTTPS
+    cookie_name: homer_session
+    # Фолбэк Basic (для API/CLI)
+    basic_enabled: true
+
+  providers:
+    local:
       enabled: true
-      allow_commands: [hello, db-report, report:daily]
-      deny_commands: []
-      max_session_seconds: 300
-    history:
-      enabled: true
-      max_output_chars: 200000     # обрезать длинный вывод
-      retention_days: 90           # сколько хранить (для авто-purge)
+    ldap:
+      enabled: false
+      server: "ldaps://dc.example.com:636"
+      bind_dn: "CN=homer,OU=Service,DC=example,DC=com"
+      bind_password: "..."
+      user_search_base: "OU=Users,DC=example,DC=com"
+      user_filter: "(&(objectClass=user)(sAMAccountName={username}))"
+      group_role_map:
+        "CN=HomerAdmins,OU=Groups,DC=example,DC=com": admin
+        "CN=HomerOps,OU=Groups,DC=example,DC=com": operator
+      default_roles: [viewer]
+    kerberos:
+      enabled: false
+      mode: proxy
+      trusted_proxies: ["10.0.0.0/8", "127.0.0.1/32"]
+      header: X-Remote-User
+      default_roles: [viewer]
 
 plugins:
   # Список включённых плагинов. "*" — включить все найденные.
@@ -182,3 +245,5 @@ i18n:
   fallback: en
   # Список доступных локалей для UI-селектора
   available: [en, ru]
+
+

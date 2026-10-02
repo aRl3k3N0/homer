@@ -1,9 +1,10 @@
 """
 Linux: notify-send / macOS: osascript.
 """
+
+import platform
 import shutil
 import subprocess
-import platform
 
 from .base import BaseNotifier, NotifyEvent
 

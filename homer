@@ -1,31 +1,88 @@
 #!/usr/bin/env python3
 """
-Homer - консольное приложение в стиле Laravel Artisan
-"""
-__version__ = "1.0.0"
+Homer -- command-line framework.
 
+Startup fast path:
+    1. Try to load metadata cache (var/cache/registry.json).
+    2. If fresh -- use cached command/plugin metadata.
+    3. Otherwise -- full scan; update cache; proceed.
+    4. Only the command being executed is imported.
+
+Cache can be disabled by setting `registry.cache: false` in config.yml
+or by passing `HOMER_NO_CACHE=1` in environment.
+
+Environment:
+HOMER_CONFIG=
+HOMER_NO_CACHE=1
+HOMER_SHOW_TIME=1
+"""
+
+from __future__ import annotations
+
+import os
 import sys
 from pathlib import Path
-from lib.plugins import get_manager
-from lib.command_loader import CommandLoader
-from lib.config import Config
-from lib.logger import Logger
-from lib.arguments import ArgumentParser
-from lib.tracing import setup_tracing, shutdown_tracing
-from lib.console import console, Color
-from lib.i18n import get_i18n
-from lib.i18n import t
 
 ROOT_DIR = Path(__file__).parent.absolute()
 sys.path.insert(0, str(ROOT_DIR))
 
+from lib.arguments import ArgumentParser
+from lib.command_loader import CommandLoader
+from lib.config import Config
+from lib.logger import Logger
+from lib.registry_cache import RegistryCache
 
-def build_context(config, logger, args, command_name, commands):
+
+def _cache_enabled(config) -> bool:
+    if os.environ.get("HOMER_NO_CACHE") == "1":
+        return False
+    return bool(config.get("registry.cache", True))
+
+def _try_load_i18n_cache(i18n, root_dir: Path) -> bool:
     """
-    Собирает контекст команды.
-    `queue` — ленивый: соединение с БД очереди открывается только при
-    первом обращении к атрибуту.
+    Load i18n from pickle cache if it exists and is fresh.
+    Returns True on success, False otherwise.
     """
+    import json
+    import pickle
+
+    cache_dir = root_dir / "var" / "cache" / "i18n"
+    meta_path = cache_dir / "meta.json"
+    if not meta_path.exists():
+        return False
+
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+
+    # Verify all source files unchanged
+    for item in meta.get("files", []):
+        p = Path(item["path"])
+        if not p.exists():
+            return False
+        st = p.stat()
+        if abs(st.st_mtime - item.get("mtime", 0)) > 0.001:
+            return False
+        if st.st_size != item.get("size", 0):
+            return False
+
+    # Load pickles
+    for locale in meta.get("locales", []):
+        pf = cache_dir / f"{locale}.pickle"
+        if not pf.exists():
+            return False
+        with open(pf, "rb") as fp:
+            data = pickle.load(fp)
+        with i18n._lock:
+            i18n._translations[locale] = data
+
+    i18n._cache.clear()
+    return True
+
+
+def build_context(config, logger, args, command_name, commands,
+                  loader=None, paths=None):
     from lib.queue import QueueStorage, Dispatcher
 
     _storage = None
@@ -47,152 +104,233 @@ def build_context(config, logger, args, command_name, commands):
             return getattr(self._get(), name)
 
     return {
-        'config': config,
-        'logger': logger,
-        'args': args,
-        'root_dir': ROOT_DIR,
-        'command_name': command_name,
-        'commands': commands,
-        'queue': _LazyQueue(),
+        "config": config,
+        "logger": logger,
+        "args": args,
+        "root_dir": paths.base if paths else ROOT_DIR,
+        "paths": paths,
+        "command_name": command_name,
+        "commands": commands,
+        "loader": loader,
+        "queue": _LazyQueue(),
     }
 
 
-def main():
-    config = Config(ROOT_DIR / 'config.yml')
-    logger = Logger(config, ROOT_DIR / 'var/log')
+def main() -> int:
+    import os
+    import time
+    started = time.perf_counter()
 
-    setup_tracing(config)
+    # ─────────── Global options ───────────
+    from lib.arguments import extract_globals
+    globals_, argv = extract_globals(sys.argv[1:])
 
-    # 1. Плагины: обнаружение и загрузка
+    # ─────────── Config path ───────────
+    config_path = (
+        Path(globals_.config).expanduser().resolve()
+        if globals_.config
+        else Path(os.environ.get("HOMER_CONFIG", ROOT_DIR / "config.yml"))
+    )
+
+    cache_enabled = (
+        not globals_.no_cache
+        and os.environ.get("HOMER_NO_CACHE") != "1"
+    )
+
+    # ─────────── Config ───────────
+    config = Config(config_path)
+
+    # ─────────── Paths ───────────
+    from lib.paths import Paths
+    paths = Paths.from_config(config, config_path)
+    paths.ensure_all()
+
+    # Attach to config so commands can access via context['config'].paths
+    config.paths = paths
+
+    logger = Logger(config, ROOT_DIR)
+
+    if globals_.verbose:
+        logger.info("config: %s", config_path)
+        logger.info("base:   %s", paths.base)
+        logger.info("commands: %s", paths.commands_dir)
+        logger.info("plugins:  %s", paths.plugins_dir)
+
+    # ─────────── i18n ───────────
+    from lib.i18n import configure as i18n_configure, set_locale
+    i18n_cfg = config.get("i18n", {}) or {}
+    i18n = i18n_configure(
+        default_locale=i18n_cfg.get("locale", "en"),
+        fallback_locale=i18n_cfg.get("fallback", "en"),
+        missing_log=bool(i18n_cfg.get("missing_log", True)),
+        cache_size=int(i18n_cfg.get("cache_size", 4096)),
+        auto_reload=False,
+    )
+    if globals_.lang:
+        set_locale(globals_.lang)
+
+    # i18n base directory
+    i18n.load_dir(paths.langs_dir)
+
+    # ─────────── Parse command args ───────────
+    parser = ArgumentParser()
+    parser.parse(argv)
+
+    # ─────────── Registry cache ───────────
+    from lib.registry_cache import RegistryCache
+    registry_cache = RegistryCache(
+        paths.base,
+        enabled=cache_enabled,
+        cache_path=paths.cache_dir / "registry.json",
+        commands_dir=paths.commands_dir,
+        plugins_dir=paths.plugins_dir,
+    )
+
+    from lib.plugins import get_manager
     plugin_mgr = get_manager()
-    plugin_mgr.discover(ROOT_DIR / 'plugins', config)
-    plugin_mgr.load_all({
-        'config': config,
-        'root_dir': ROOT_DIR,
-    })
+    plugin_mgr._registry_cache = registry_cache
 
-    i18n = get_i18n()
-    i18n.default_locale = config.get('i18n.locale', 'en')
-    i18n.fallback_locale = config.get('i18n.fallback', 'en')
+    loader = CommandLoader(paths.commands_dir, root_dir=paths.base)
 
-    # Глобальные переводы
-    i18n.load_dir(ROOT_DIR / 'langs')
+    cached = registry_cache.load() if cache_enabled else None
+    cache_hit = bool(cached and registry_cache.is_fresh(cached))
 
-    # Переводы плагинов
+    if cache_hit:
+        plugin_mgr.discover(paths.plugins_dir, config, use_cache=True)
+        plugin_mgr.load_all({"config": config, "root_dir": paths.base})
+        for p in plugin_mgr.list():
+            if p.commands_dir:
+                loader.add_plugin_commands(p.name, p.commands_dir)
+
+        commands = {}
+        for name, info in (cached.get("commands") or {}).items():
+            commands[name] = {
+                "path": paths.base / info["path"],
+                "description": info.get("description", ""),
+                "source": info.get("source", "user"),
+                "lazy": True,
+                "module": None,
+                "execute": None,
+            }
+        for name, meta in loader.load_commands().items():
+            commands.setdefault(name, meta)
+    else:
+        plugin_mgr.discover(paths.plugins_dir, config, use_cache=False)
+        plugin_mgr.load_all({"config": config, "root_dir": paths.base})
+        for p in plugin_mgr.list():
+            if p.commands_dir:
+                loader.add_plugin_commands(p.name, p.commands_dir)
+        commands = loader.load_commands()
+
+    # i18n from plugins
     for p in plugin_mgr.list():
         if p.langs_dir:
             i18n.load_dir(p.langs_dir)
 
-    # 2. Миграции плагинов (если auto_migrate)
-    if config.get('plugins.auto_migrate', True):
-        try:
-            from lib.db import connect
-            sched_cfg = config.get('scheduler', {}) or {}
-            driver = sched_cfg.get('storage', 'sqlite')
-            conn_cfg = sched_cfg.get(driver) or config.get(f'databases.{driver}')
-            if driver == 'sqlite':
-                if not conn_cfg:
-                    conn_cfg = {'path': 'var/scheduler.db'}
-                elif 'path' not in conn_cfg:
-                    conn_cfg = dict(conn_cfg, path='var/scheduler.db')
-            db = connect(driver, conn_cfg)
-            result = plugin_mgr.run_migrations(driver, db)
-            for a in result['applied']:
-                # тихо или через logger
-                pass
-            db.close()
-        except Exception as e:
-            # не падаем из-за миграций
-            import logging
-            logging.getLogger('homer.plugins').warning(f"auto-migrate: {e}")
-
-    parser = ArgumentParser()
-    parser.parse(sys.argv[1:])
-
-    loader = CommandLoader(ROOT_DIR / 'commands')
-    for plugin_dir in plugin_mgr.paths_for('commands'):
-        plugin_name = plugin_dir.parent.name
-        loader.add_plugin_commands(plugin_name, plugin_dir)
-    commands = loader.load_commands()
-
+    # Built-ins
     from lib.commands import BUILTIN_COMMANDS
     for name, info in BUILTIN_COMMANDS.items():
         commands.setdefault(name, info)
 
-    if not parser.command or parser.command in ['help', 'list', '--help', '-h']:
+    # ─────────── Help / list ───────────
+    if not parser.command or parser.command in ("help", "list", "--help", "-h"):
         show_commands_list(commands)
         return 0
 
     if parser.command not in commands:
-        console.error(f"The command '{parser.command}' was not found.!")
-        console.comment("Use ‘homer’ to view available commands.")
+        print(f"Command '{parser.command}' not found.")
+        print("Run 'homer' to see available commands.")
         return 1
 
-    command_info = commands[parser.command]
+    # ─────────── Execute ───────────
+    cmd_name = parser.command
+    command_info = commands[cmd_name]
+
+    if not command_info.get("execute"):
+        loaded = loader.get_command(cmd_name)
+        if not loaded or not loaded.get("execute"):
+            print(f"Failed to load command '{cmd_name}'.")
+            return 1
+        command_info = loaded
 
     try:
-        logger.info(f"Running the command: {parser.command}", command=parser.command)
-        logger.info(f"Arguments: {parser.options}", command=parser.command)
+        logger.info("Running command: %s", cmd_name, command=cmd_name)
+        logger.info("Arguments: %s", parser.options, command=cmd_name)
 
         context = build_context(
             config=config,
             logger=logger,
             args=parser.options,
-            command_name=parser.command,
+            command_name=cmd_name,
             commands=commands,
+            loader=loader,
+            paths=paths,
         )
 
-        try:
-            result = command_info['execute'](context)
-            logger.info(f"The command is completed with code: {result}", command=parser.command)
-            return result if isinstance(result, int) else 0
-        finally:
-            shutdown_tracing()
+        result = command_info["execute"](context)
+        code = result if isinstance(result, int) else 0
+        logger.info("Command finished with code: %s", code, command=cmd_name)
+
+        if os.environ.get("HOMER_SHOW_TIME") == "1":
+            elapsed = (time.perf_counter() - started) * 1000
+            print(f"[startup: {elapsed:.1f} ms, cache_hit={cache_hit}]")
+
+        return code
 
     except KeyboardInterrupt:
-        logger.warning("Interrupted by the user", command=parser.command)
-        console.newline()
+        logger.warning("Interrupted by user", command=cmd_name)
+        print()
         return 130
     except Exception as e:
-        logger.error(f"Command execution error: {e}",
-                     command=parser.command, exc_info=True)
-        console.error(f"Error: {e}")
+        logger.error("Command failed: %s", e, command=cmd_name, exc_info=True)
+        print(f"Error: {e}")
         return 1
 
 
-def show_commands_list(commands):
-    console.banner("HOMER", "Console application", color=Color.BRIGHT_CYAN)
+def _log_verbose(globals_, logger, message: str) -> None:
+    if getattr(globals_, "verbose", False):
+        logger.info(message)
 
-    console.info(f"Version: {__version__}")
+
+def show_commands_list(commands):
+    """Pretty-print the command list."""
+    try:
+        from lib.console import console, Color
+    except ImportError:
+        for name in sorted(commands):
+            print(f"  {name:<30} {commands[name].get('description', '')}")
+        return
+
+    console.banner("HOMER", "Command-line framework", color=Color.BRIGHT_CYAN)
 
     if not commands:
-        console.warning("There are no available commands.")
+        console.warning("No commands available")
         return
 
     console.section("Available commands")
 
-    grouped = {}
+    grouped: dict[str, list[tuple[str, dict]]] = {}
     for name, info in sorted(commands.items()):
-        namespace = name.split(':')[0] if ':' in name else 'general'
+        namespace = name.split(":")[0] if ":" in name else "general"
         grouped.setdefault(namespace, []).append((name, info))
 
-    for namespace, cmds in sorted(grouped.items()):
-        if namespace != 'general':
+    for namespace, items in sorted(grouped.items()):
+        if namespace != "general":
             print(console.colored(f"  {namespace}",
                                   Color.BOLD + Color.BRIGHT_MAGENTA))
-        for name, info in cmds:
-            desc = info.get('description', 'No description')
-            src = info.get('source', 'user')
-            marker = '' if src == 'user' else console.dim(' [builtin]')
+        for name, info in items:
+            desc = info.get("description") or "No description"
+            src = info.get("source", "user")
+            marker = "" if src == "user" else console.dim(" [builtin]")
             print(f"    {console.colored(name.ljust(30), Color.BRIGHT_YELLOW)} "
                   f"{console.dim(desc)}{marker}")
         print()
 
     console.line()
-    console.comment("  Using: homer <command> [--param=value ...]")
+    console.comment("  Usage: homer <command> [--param=value ...]")
     console.line()
     print()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

@@ -1,6 +1,7 @@
 """
 Пишет события в JSONL-файл.
 """
+
 import json
 from pathlib import Path
 

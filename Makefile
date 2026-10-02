@@ -235,3 +235,44 @@ docker-run:
 
 release-dry:
 	semantic-release version --print
+
+webui-start:
+	./homer webui:start
+
+webui-stop:
+	./homer webui:stop
+
+webui-restart:
+	./homer webui:restart
+
+webui-reload:
+	./homer webui:reload
+
+webui-status:
+	./homer webui:status
+
+scheduler-start:
+	./homer scheduler:start
+
+scheduler-stop:
+	./homer scheduler:stop
+
+scheduler-restart:
+	./homer scheduler:restart
+
+scheduler-reload:
+	./homer scheduler:reload
+
+scheduler-status:
+	./homer scheduler:status
+
+services:
+	./homer services
+
+services-stop:
+	./homer webui:stop || true
+	./homer scheduler:stop || true
+
+services-start:
+	./homer scheduler:start
+	./homer webui:start

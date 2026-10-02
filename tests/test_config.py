@@ -1,4 +1,5 @@
 """Тесты Config."""
+
 from lib.config import Config
 
 

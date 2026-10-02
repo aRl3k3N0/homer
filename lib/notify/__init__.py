@@ -1,39 +1,43 @@
 """
 Реестр нотификаторов + загрузка плагинов через entry points.
 """
+
 from __future__ import annotations
 
-import logging
 from importlib.metadata import entry_points
+import logging
+
 from lib.tracing import span
+
+from ..metrics import inc_error, inc_notify
 from .base import BaseNotifier, NotifyEvent
+from .desktop_notifier import DesktopNotifier
+from .discord_notifier import DiscordNotifier
 from .email_notifier import EmailNotifier
 from .file_notifier import FileNotifier
 from .log_notifier import LogNotifier
-from .desktop_notifier import DesktopNotifier
-from .telegram_notifier import TelegramNotifier
-from .slack_notifier import SlackNotifier
 from .mattermost_notifier import MattermostNotifier
 from .rocketchat_notifier import RocketChatNotifier
-from .discord_notifier import DiscordNotifier
+from .slack_notifier import SlackNotifier
 from .teams_notifier import TeamsNotifier
-from ..metrics import inc_notify, inc_error
+from .telegram_notifier import TelegramNotifier
 
 _log = logging.getLogger('homer.notify')
 
 # Встроенные нотификаторы
 REGISTRY: dict[str, type[BaseNotifier]] = {
-    'email':      EmailNotifier,
-    'file':       FileNotifier,
-    'log':        LogNotifier,
-    'desktop':    DesktopNotifier,
-    'telegram':   TelegramNotifier,
-    'slack':      SlackNotifier,
+    'email': EmailNotifier,
+    'file': FileNotifier,
+    'log': LogNotifier,
+    'desktop': DesktopNotifier,
+    'telegram': TelegramNotifier,
+    'slack': SlackNotifier,
     'mattermost': MattermostNotifier,
     'rocketchat': RocketChatNotifier,
-    'discord':    DiscordNotifier,
-    'teams':      TeamsNotifier,
+    'discord': DiscordNotifier,
+    'teams': TeamsNotifier,
 }
+
 
 def _load_plugins():
     """
@@ -60,19 +64,17 @@ def _load_plugins():
             continue
 
         if not (isinstance(cls, type) and issubclass(cls, BaseNotifier)):
-            _log.warning(
-                f"Плагин '{ep.name}' должен быть подклассом BaseNotifier"
-            )
+            _log.warning(f"Плагин '{ep.name}' должен быть подклассом BaseNotifier")
             continue
 
         name = getattr(cls, 'name', None) or ep.name
         REGISTRY[name] = cls
-        _log.info(f"Зарегистрирован плагин нотификатора '{name}' "
-                  f"({cls.__module__}.{cls.__name__})")
+        _log.info(f"Зарегистрирован плагин нотификатора '{name}' ({cls.__module__}.{cls.__name__})")
 
 
 # Загружаем плагины при импорте пакета
 _load_plugins()
+
 
 class NotifyManager:
     def __init__(self, config, logger=None, root_dir=None, mailer_factory=None):
@@ -86,8 +88,7 @@ class NotifyManager:
             cls = REGISTRY.get(name)
             if cls is None:
                 if logger:
-                    logger.warning(f"Неизвестный нотификатор: {name}",
-                                   command='notify')
+                    logger.warning(f"Неизвестный нотификатор: {name}", command='notify')
                 continue
             try:
                 if name == 'log':
@@ -102,8 +103,9 @@ class NotifyManager:
                     self.notifiers.append(cls(config))
             except Exception as e:
                 if logger:
-                    logger.error(f"[notify] init {name} failed: {e}",
-                                 command='notify', exc_info=True)
+                    logger.error(
+                        f"[notify] init {name} failed: {e}", command='notify', exc_info=True
+                    )
 
     def emit(self, event):
         for n in self.notifiers:
@@ -125,11 +127,13 @@ class NotifyManager:
                     if self.logger:
                         self.logger.error(
                             f"[notify] {n.name} failed: {e}",
-                            command='notify', exc_info=True,
+                            command='notify',
+                            exc_info=True,
                         )
 
     def emit_from_job(self, job):
         from datetime import datetime
+
         event = NotifyEvent(
             job_id=job.id,
             command=job.command,
@@ -140,7 +144,8 @@ class NotifyManager:
             result=job.result,
             duration_sec=(
                 (job.finished_at - job.started_at).total_seconds()
-                if job.finished_at and job.started_at else None
+                if job.finished_at and job.started_at
+                else None
             ),
             triggered_by=job.triggered_by,
             attempts=job.attempts,
@@ -151,7 +156,16 @@ class NotifyManager:
         self.emit(event)
 
 
-__all__ = ['BaseNotifier', 'NotifyEvent', 'NotifyManager',
-           'REGISTRY', 'EmailNotifier', 'TelegramNotifier',
-           'SlackNotifier', 'MattermostNotifier',
-           'RocketChatNotifier', 'DiscordNotifier', 'TeamsNotifier']
+__all__ = [
+    'REGISTRY',
+    'BaseNotifier',
+    'DiscordNotifier',
+    'EmailNotifier',
+    'MattermostNotifier',
+    'NotifyEvent',
+    'NotifyManager',
+    'RocketChatNotifier',
+    'SlackNotifier',
+    'TeamsNotifier',
+    'TelegramNotifier',
+]

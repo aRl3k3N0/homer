@@ -1,7 +1,9 @@
 """
 Парсер cron-выражений (5 полей).
 """
+
 from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 
@@ -11,9 +13,7 @@ class CronExpression:
         self.expr = expr.strip()
         parts = self.expr.split()
         if len(parts) != 5:
-            raise ValueError(
-                f"Ожидается 5 полей в cron-выражении, получено {len(parts)}: '{expr}'"
-            )
+            raise ValueError(f"Ожидается 5 полей в cron-выражении, получено {len(parts)}: '{expr}'")
         self.minute = self._parse(parts[0], 0, 59)
         self.hour = self._parse(parts[1], 0, 23)
         self.day = self._parse(parts[2], 1, 31)

@@ -10,6 +10,7 @@ WebSocket-хаб для Web UI.
     {'type': 'job.removed', 'job_id': 42}
     {'type': 'stats.updated', 'stats': {...}}
 """
+
 from __future__ import annotations
 
 import asyncio

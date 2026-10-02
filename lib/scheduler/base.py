@@ -1,10 +1,11 @@
 """
 Базовые сущности планировщика.
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List
 import json
+from typing import Optional
 
 
 @dataclass
@@ -57,11 +58,26 @@ class Task:
 
 
 class BaseStorage:
-    def init_schema(self): raise NotImplementedError
-    def add(self, task): raise NotImplementedError
-    def get(self, task_id): raise NotImplementedError
-    def get_by_name(self, name): raise NotImplementedError
-    def list(self): raise NotImplementedError
-    def update(self, task): raise NotImplementedError
-    def remove(self, task_id): raise NotImplementedError
-    def close(self): pass
+    def init_schema(self):
+        raise NotImplementedError
+
+    def add(self, task):
+        raise NotImplementedError
+
+    def get(self, task_id):
+        raise NotImplementedError
+
+    def get_by_name(self, name):
+        raise NotImplementedError
+
+    def list(self):
+        raise NotImplementedError
+
+    def update(self, task):
+        raise NotImplementedError
+
+    def remove(self, task_id):
+        raise NotImplementedError
+
+    def close(self):
+        pass

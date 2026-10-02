@@ -1,6 +1,7 @@
 """
 Пишет в основной лог Homer.
 """
+
 from .base import BaseNotifier, NotifyEvent
 
 
@@ -20,9 +21,11 @@ class LogNotifier(BaseNotifier):
         level = self.level
         if not event.ok and level == 'info':
             level = 'error'
-        msg = (f"[notify] job #{event.job_id} {event.short_command} → "
-               f"{event.status} (exit={event.exit_code}, "
-               f"attempts={event.attempts}/{event.max_attempts})")
+        msg = (
+            f"[notify] job #{event.job_id} {event.short_command} → "
+            f"{event.status} (exit={event.exit_code}, "
+            f"attempts={event.attempts}/{event.max_attempts})"
+        )
         if event.error:
             msg += f" error={event.error[:200]}"
         getattr(self.logger, level, self.logger.info)(msg, command='notify')

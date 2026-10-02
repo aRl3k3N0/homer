@@ -1,6 +1,7 @@
 """
 Slack-нотификатор через Incoming Webhook.
 """
+
 import json
 
 from .base import BaseNotifier, NotifyEvent
@@ -21,14 +22,17 @@ class SlackNotifier(BaseNotifier):
     def _http_post(self, url, payload):
         try:
             import requests
+
             r = requests.post(url, json=payload, timeout=10)
             r.raise_for_status()
             return r.text
         except ImportError:
             import urllib.request
+
             data = json.dumps(payload).encode('utf-8')
             req = urllib.request.Request(
-                url, data=data,
+                url,
+                data=data,
                 headers={'Content-Type': 'application/json'},
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
@@ -41,29 +45,35 @@ class SlackNotifier(BaseNotifier):
                 'type': 'section',
                 'text': {
                     'type': 'mrkdwn',
-                    'text': (f"{icon} *Job #{event.job_id}* — `{event.status}`\n"
-                             f"*Команда:* `{event.command}`")
-                }
+                    'text': (
+                        f"{icon} *Job #{event.job_id}* — `{event.status}`\n"
+                        f"*Команда:* `{event.command}`"
+                    ),
+                },
             }
         ]
         fields = [
             {'type': 'mrkdwn', 'text': f"*Exit code:*\n{event.exit_code}"},
-            {'type': 'mrkdwn',
-             'text': f"*Попыток:*\n{event.attempts}/{event.max_attempts}"},
+            {'type': 'mrkdwn', 'text': f"*Попыток:*\n{event.attempts}/{event.max_attempts}"},
         ]
         if event.args:
             args_str = ', '.join(f'{k}={v}' for k, v in event.args.items())
             fields.append({'type': 'mrkdwn', 'text': f"*Аргументы:*\n`{args_str}`"})
         if event.duration_sec is not None:
-            fields.append({'type': 'mrkdwn',
-                           'text': f"*Длительность:*\n{round(event.duration_sec, 2)} с"})
+            fields.append(
+                {'type': 'mrkdwn', 'text': f"*Длительность:*\n{round(event.duration_sec, 2)} с"}
+            )
         blocks.append({'type': 'section', 'fields': fields})
         if event.error:
-            blocks.append({
-                'type': 'section',
-                'text': {'type': 'mrkdwn',
-                         'text': f"*Ошибка:*\n```{(event.error or '')[:1500]}```"}
-            })
+            blocks.append(
+                {
+                    'type': 'section',
+                    'text': {
+                        'type': 'mrkdwn',
+                        'text': f"*Ошибка:*\n```{(event.error or '')[:1500]}```",
+                    },
+                }
+            )
         return blocks
 
     def send(self, event: NotifyEvent):
