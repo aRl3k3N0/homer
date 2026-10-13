@@ -1,9 +1,8 @@
 """
 i18n:cache   -- build the translations cache (pickle)
 i18n:clear   -- remove the translations cache
-i18n:info    -- show cache info
+i18n:info    -- show cache info and layer sources
 i18n:rebuild -- alias for cache
-i18n:check   -- verify translations (already exists, kept separate)
 """
 
 from __future__ import annotations
@@ -14,37 +13,56 @@ from datetime import datetime
 from pathlib import Path
 
 from lib.console import console, Color
+from lib.i18n.manager import Layer
 
 
 DESCRIPTIONS = {
     "cache":   "Build the translations cache (pickle)",
     "rebuild": "Rebuild the translations cache from scratch",
     "clear":   "Remove the translations cache",
-    "info":    "Show translations cache information",
+    "info":    "Show translations cache information and sources",
 }
 
 CACHE_VERSION = 1
 
 
 def _cache_dir(context) -> Path:
+    paths = context.get("paths")
+    if paths:
+        return paths.cache_dir / "i18n"
     return Path(context["root_dir"]) / "var" / "cache" / "i18n"
 
 
 def _langs_dirs(context) -> list[Path]:
-    """Collect every directory that contributes translations."""
+    """
+    Collect every directory that contributes translations, in layer
+    order: system, project, plugin.
+    """
     root = Path(context["root_dir"])
-    dirs: list[Path] = [root / "langs"]
+    dirs: list[Path] = []
 
+    # 1) System
+    sys_langs = root / "lib" / "webui" / "i18n"
+    if sys_langs.exists():
+        dirs.append(sys_langs)
+
+    # 2) Project
+    paths = context.get("paths")
+    if paths and paths.langs_dir.exists():
+        dirs.append(paths.langs_dir)
+    elif (root / "langs").exists():
+        dirs.append(root / "langs")
+
+    # 3) Plugins
     try:
         from lib.plugins import get_manager
-        pm = get_manager()
-        for p in pm.list():
+        for p in get_manager().list():
             if p.langs_dir:
                 dirs.append(p.langs_dir)
     except Exception:
         pass
 
-    return [d for d in dirs if d.exists()]
+    return dirs
 
 
 def _fmt_bytes(n: int) -> str:
@@ -56,7 +74,6 @@ def _fmt_bytes(n: int) -> str:
 
 
 def cache(context):
-    """Build pickle cache for all translations."""
     import yaml
 
     console.section("Building i18n cache")
@@ -69,7 +86,6 @@ def cache(context):
     cache_dir = _cache_dir(context)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # Merge all locales
     merged: dict[str, dict] = {}
     files_meta: list[dict] = []
 
@@ -80,6 +96,7 @@ def cache(context):
             else:
                 dst[k] = v
 
+    # Load in layer order (weakest first)
     for d in dirs:
         for f in list(sorted(d.glob("*.yml"))) + list(sorted(d.glob("*.yaml"))):
             locale = f.stem
@@ -104,13 +121,11 @@ def cache(context):
         console.error("Nothing to cache.")
         return 1
 
-    # Write pickle per locale
     for locale, data in merged.items():
         p = cache_dir / f"{locale}.pickle"
         with open(p, "wb") as fp:
             pickle.dump(data, fp, protocol=pickle.HIGHEST_PROTOCOL)
 
-    # Meta file
     meta = {
         "version": CACHE_VERSION,
         "generated_at": datetime.now().isoformat(),
@@ -134,7 +149,6 @@ def rebuild(context):
 
 
 def clear(context):
-    """Remove the i18n cache directory."""
     cache_dir = _cache_dir(context)
     if not cache_dir.exists():
         console.comment("Nothing to clear.")
@@ -151,7 +165,6 @@ def clear(context):
 
 
 def info(context):
-    """Show i18n cache info."""
     cache_dir = _cache_dir(context)
     meta_path = cache_dir / "meta.json"
 
@@ -161,23 +174,38 @@ def info(context):
         console.warning("Cache does not exist.")
         console.key_value("Expected path", str(cache_dir))
         console.comment("Run 'homer i18n:cache' to build it.")
-        return 0
+    else:
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            console.error(f"Cannot read meta: {e}")
+            return 1
 
+        total = sum(
+            (cache_dir / f"{loc}.pickle").stat().st_size
+            for loc in meta.get("locales", [])
+            if (cache_dir / f"{loc}.pickle").exists()
+        )
+        console.key_value("Path", str(cache_dir))
+        console.key_value("Size", _fmt_bytes(total))
+        console.key_value("Generated", meta.get("generated_at") or "—")
+        console.key_value("Locales", ", ".join(meta.get("locales", [])))
+        console.key_value("Source files", len(meta.get("files", [])))
+
+    # Sources by layer
+    console.section("Sources by layer")
     try:
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    except Exception as e:
-        console.error(f"Cannot read meta: {e}")
-        return 1
+        from lib.i18n import get_i18n
+        i18n = get_i18n()
+        src = i18n.sources()
+        for layer in Layer.ORDER:
+            paths = src.get(layer, [])
+            if not paths:
+                continue
+            console.print(console.colored(f"  {layer}", Color.BOLD))
+            for p in paths:
+                console.list_item(str(p))
+    except Exception:
+        pass
 
-    total = sum(
-        (cache_dir / f"{loc}.pickle").stat().st_size
-        for loc in meta.get("locales", [])
-        if (cache_dir / f"{loc}.pickle").exists()
-    )
-
-    console.key_value("Path", str(cache_dir))
-    console.key_value("Size", _fmt_bytes(total))
-    console.key_value("Generated", meta.get("generated_at") or "—")
-    console.key_value("Locales", ", ".join(meta.get("locales", [])))
-    console.key_value("Source files", len(meta.get("files", [])))
     return 0

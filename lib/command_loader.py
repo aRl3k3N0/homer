@@ -1,19 +1,26 @@
 """
-Command loader with optional lazy import.
+Command loader with optional lazy import and metadata extraction.
 
-Two modes:
-    eager  -- import every module immediately (original behaviour)
-    lazy   -- read metadata from cache, import only when executing
+Metadata is extracted without importing the module:
+    - DESCRIPTION, USAGE, PARAMS, EXAMPLES, HIDDEN from module globals
+    - PARAMS auto-derived from `args.get('...')` calls if not set
+    - EXAMPLES auto-generated from PARAMS if not set
 
-Lazy mode is triggered by `commands` dict containing entries with
-'lazy': True and a 'path' key. In that case `get_command(name)` loads
-the module on demand, while `load_commands()` returns metadata as-is.
+Public API
+----------
+    load_commands() -> dict[str, dict]      -- scan + cache metadata
+    metadata() -> dict[str, dict]           -- cached metadata (no import)
+    get_command(name) -> dict | None        -- import on demand
+    add_plugin_commands(plugin, path)       -- register plugin command dir
 """
 
 from __future__ import annotations
 
+import ast
 import importlib.util
 import logging
+import re
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -22,11 +29,6 @@ _log = logging.getLogger("homer.command_loader")
 
 class CommandLoader:
     def __init__(self, commands_dir: Path, *, root_dir: Optional[Path] = None):
-        """
-        commands_dir -- directory containing user commands.
-        root_dir     -- project root (used to resolve plugin paths).
-                        Defaults to commands_dir.parent.
-        """
         self.commands_dir = Path(commands_dir)
         self.root_dir = Path(root_dir) if root_dir else self.commands_dir.parent
         self.plugin_dirs: list[tuple[str, Path]] = []
@@ -35,19 +37,14 @@ class CommandLoader:
     # ─────────── Plugin registration ───────────
 
     def add_plugin_commands(self, plugin_name: str, plugin_commands_dir: Path) -> None:
-        """
-        Register a plugin's commands directory. Commands will be exposed
-        as '<plugin_name>:<local_name>'.
-        """
         self.plugin_dirs.append((plugin_name, Path(plugin_commands_dir)))
 
-    # ─────────── Public loading API ───────────
+    # ─────────── Loading ───────────
 
     def load_commands(self) -> dict[str, dict[str, Any]]:
         """
-        Return all commands (user + plugin) as metadata dicts.
-        In lazy mode each entry has 'lazy': True and 'path'; the module
-        is not imported yet.
+        Scan user and plugin command directories.
+        Returns (and caches) a dict of metadata. Modules are NOT imported.
         """
         commands: dict[str, dict[str, Any]] = {}
 
@@ -81,10 +78,19 @@ class CommandLoader:
         self._loaded = commands
         return commands
 
+    def metadata(self) -> dict[str, dict[str, Any]]:
+        """
+        Return cached metadata for all commands. Triggers a scan on
+        first call. No modules are imported.
+        """
+        if not self._loaded:
+            self.load_commands()
+        return self._loaded
+
     def get_command(self, name: str) -> Optional[dict[str, Any]]:
         """
-        Load a single command module (import on demand in lazy mode).
-        Returns metadata with 'execute' callable, or None.
+        Return metadata for a single command with `execute` callable.
+        Imports the module on demand (lazy mode).
         """
         if not self._loaded:
             self.load_commands()
@@ -109,39 +115,23 @@ class CommandLoader:
                 return None
         return info
 
-    def metadata(self) -> dict[str, dict[str, Any]]:
-        """Return metadata for all commands (no imports)."""
-        if not self._loaded:
-            self.load_commands()
-        return self._loaded
+    # ─────────── Metadata extraction (no import) ───────────
 
-    # ─────────── Internals ───────────
-
-    def _metadata_only(
-        self,
-        py_file: Path,
-        name: str,
-        *,
-        source: str,
-    ) -> Optional[dict[str, Any]]:
-        """
-        Build metadata without importing the module.
-
-        We do a tiny AST-less scan: read first ~2 KB of the file and
-        look for a top-level DESCRIPTION assignment. If not found,
-        we leave description empty. Full description is only available
-        after import, which we defer.
-        """
-        description = ""
+    def _metadata_only(self, py_file: Path, name: str, *, source: str
+                       ) -> Optional[dict[str, Any]]:
         try:
-            head = py_file.read_text(encoding="utf-8", errors="replace")[:4096]
-            description = self._extract_description(head)
+            source_text = py_file.read_text(encoding="utf-8", errors="replace")
         except Exception:
-            pass
+            source_text = ""
 
+        meta = self._extract_metadata_ast(source_text, name)
         return {
             "path": py_file,
-            "description": description,
+            "description": meta.get("description", ""),
+            "usage": meta.get("usage", ""),
+            "params": meta.get("params", {}),
+            "examples": meta.get("examples", []),
+            "hidden": meta.get("hidden", False),
             "source": source,
             "lazy": True,
             "module": None,
@@ -149,42 +139,143 @@ class CommandLoader:
         }
 
     @staticmethod
-    def _extract_description(source: str) -> str:
+    def _extract_metadata_ast(source: str, name: str) -> dict[str, Any]:
         """
-        Extract DESCRIPTION = "..." from the file header, without exec.
-        Falls back to the module docstring first line.
+        Extract module-level metadata and auto-derive PARAMS from
+        `args.get('key'[, default])` calls.
+
+        Never raises: on any parse failure returns what was found so far.
         """
-        import re
-        # DESCRIPTION = "..." or '...'
-        m = re.search(
-            r'^\s*DESCRIPTION\s*=\s*["\'](.+?)["\']',
-            source,
-            re.MULTILINE,
-        )
-        if m:
-            return m.group(1).strip()
-        # docstring: """First line"""
-        m = re.search(r'^\s*(?:"""|\'\'\')\s*(.+?)\s*(?:"""|\'\'\')',
+        result: dict[str, Any] = {}
+
+        # ── Simple regex pass: DESCRIPTION / USAGE / HIDDEN ──
+        m = re.search(r"^\s*DESCRIPTION\s*=\s*(['\"])(.+?)\1",
                       source, re.MULTILINE | re.DOTALL)
         if m:
-            first = m.group(1).strip().splitlines()[0] if m.group(1).strip() else ""
-            return first
-        return ""
+            result["description"] = m.group(2).strip()
+        else:
+            # Fallback: first line of docstring
+            m = re.search(r'^\s*(?:"""|\'\'\')\s*(.+?)(?:\n|(?:"""|\'\'\'))',
+                          source, re.MULTILINE)
+            if m:
+                result["description"] = m.group(1).strip()
+
+        m = re.search(r"^\s*USAGE\s*=\s*(['\"])(.+?)\1",
+                      source, re.MULTILINE | re.DOTALL)
+        if m:
+            result["usage"] = m.group(2).strip()
+
+        if re.search(r"^\s*HIDDEN\s*=\s*True", source, re.MULTILINE):
+            result["hidden"] = True
+
+        # ── AST pass: PARAMS / EXAMPLES / args.get('...') ──
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            return result
+
+        parsed_params: dict[str, str] = {}
+        parsed_examples: list[str] = []
+        seen_arg_keys: set[str] = set()
+        arg_defaults: dict[str, Any] = {}
+
+        for node in tree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if not isinstance(target, ast.Name):
+                    continue
+                if target.id == "PARAMS" and isinstance(node.value, ast.Dict):
+                    parsed_params = CommandLoader._ast_dict_of_str(node.value)
+                elif target.id == "EXAMPLES" and isinstance(
+                        node.value, (ast.List, ast.Tuple)):
+                    parsed_examples = [
+                        elt.value for elt in node.value.elts
+                        if isinstance(elt, ast.Constant)
+                        and isinstance(elt.value, str)
+                    ]
+
+        # Walk the AST for `<something>.get('key'[, default])`
+        class _ArgVisitor(ast.NodeVisitor):
+            def visit_Call(self, node_call: ast.Call):
+                func = node_call.func
+                if isinstance(func, ast.Attribute) and func.attr == "get":
+                    if node_call.args and isinstance(node_call.args[0], ast.Constant):
+                        key = node_call.args[0].value
+                        if isinstance(key, str):
+                            seen_arg_keys.add(key)
+                            default = None
+                            if len(node_call.args) >= 2:
+                                try:
+                                    default = ast.literal_eval(node_call.args[1])
+                                except Exception:
+                                    default = None
+                            elif node_call.keywords:
+                                for kw in node_call.keywords:
+                                    if kw.arg == "default":
+                                        try:
+                                            default = ast.literal_eval(kw.value)
+                                        except Exception:
+                                            default = None
+                            arg_defaults[key] = default
+                self.generic_visit(node_call)
+
+        _ArgVisitor().visit(tree)
+
+        # Merge: explicit PARAMS override auto-derived
+        if not parsed_params and seen_arg_keys:
+            auto: dict[str, str] = {}
+            for key in sorted(seen_arg_keys):
+                default = arg_defaults.get(key)
+                if default is not None:
+                    auto[key] = f"Optional (default: {default!r})"
+                else:
+                    auto[key] = "Optional"
+            parsed_params = auto
+
+        if parsed_params:
+            result["params"] = parsed_params
+
+        # Minimal example if not set and we have params
+        if not parsed_examples and parsed_params:
+            keys = list(parsed_params.keys())[:2]
+            example = name
+            for k in keys:
+                example += f" --{k}=<value>"
+            parsed_examples = [example]
+
+        if parsed_examples:
+            result["examples"] = parsed_examples
+
+        return result
+
+    @staticmethod
+    def _ast_dict_of_str(node: ast.Dict) -> dict[str, str]:
+        out: dict[str, str] = {}
+        for k_node, v_node in zip(node.keys, node.values):
+            if isinstance(k_node, ast.Constant) and isinstance(k_node.value, str):
+                if isinstance(v_node, ast.Constant) and isinstance(v_node.value, str):
+                    out[k_node.value] = v_node.value
+                else:
+                    try:
+                        out[k_node.value] = str(ast.literal_eval(v_node))
+                    except Exception:
+                        out[k_node.value] = ""
+        return out
+
+    # ─────────── Import ───────────
 
     def _import_module(self, path: Path):
-        """
-        Import a single Python file as a module.
-        The module name is derived from the path to keep sys.modules
-        deterministic.
-        """
         rel = path.relative_to(self.root_dir) if path.is_absolute() else path
-        name = "homer_cmd_" + str(rel).replace("/", "_").replace("\\", "_").replace(".py", "")
-        spec = importlib.util.spec_from_file_location(name, path)
+        mod_name = (
+            "homer_cmd_"
+            + str(rel).replace("/", "_").replace("\\", "_").replace(".py", "")
+        )
+        spec = importlib.util.spec_from_file_location(mod_name, path)
         if not spec or not spec.loader:
             raise ImportError(f"cannot load spec for {path}")
         module = importlib.util.module_from_spec(spec)
-        import sys
-        sys.modules[name] = module
+        sys.modules[mod_name] = module
         spec.loader.exec_module(module)
         return module
 

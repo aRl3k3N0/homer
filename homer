@@ -2,87 +2,39 @@
 """
 Homer -- command-line framework.
 
-Startup fast path:
-    1. Try to load metadata cache (var/cache/registry.json).
-    2. If fresh -- use cached command/plugin metadata.
-    3. Otherwise -- full scan; update cache; proceed.
-    4. Only the command being executed is imported.
-
-Cache can be disabled by setting `registry.cache: false` in config.yml
-or by passing `HOMER_NO_CACHE=1` in environment.
-
-Environment:
-HOMER_CONFIG=
-HOMER_NO_CACHE=1
-HOMER_SHOW_TIME=1
+Startup order:
+    1. Parse global options (--config, --lang, --no-cache, --verbose).
+    2. Load config (with includes and optional cache).
+    3. Resolve paths (system vs project).
+    4. Initialise i18n with three layers: system, project, plugin.
+    5. Load plugin and command metadata (with optional cache).
+    6. Execute the requested command.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.absolute()
 sys.path.insert(0, str(ROOT_DIR))
 
-from lib.arguments import ArgumentParser
+from lib.cluster.nodes import NodeRegistry
+from lib.cluster.files import ClusterFiles
+from lib.arguments import ArgumentParser, extract_globals
 from lib.command_loader import CommandLoader
 from lib.config import Config
+from lib.i18n import get_i18n, configure as i18n_configure, set_locale
+from lib.i18n.manager import Layer
 from lib.logger import Logger
 from lib.registry_cache import RegistryCache
 
 
-def _cache_enabled(config) -> bool:
-    if os.environ.get("HOMER_NO_CACHE") == "1":
-        return False
-    return bool(config.get("registry.cache", True))
-
-def _try_load_i18n_cache(i18n, root_dir: Path) -> bool:
-    """
-    Load i18n from pickle cache if it exists and is fresh.
-    Returns True on success, False otherwise.
-    """
-    import json
-    import pickle
-
-    cache_dir = root_dir / "var" / "cache" / "i18n"
-    meta_path = cache_dir / "meta.json"
-    if not meta_path.exists():
-        return False
-
-    try:
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    except Exception:
-        return False
-
-    # Verify all source files unchanged
-    for item in meta.get("files", []):
-        p = Path(item["path"])
-        if not p.exists():
-            return False
-        st = p.stat()
-        if abs(st.st_mtime - item.get("mtime", 0)) > 0.001:
-            return False
-        if st.st_size != item.get("size", 0):
-            return False
-
-    # Load pickles
-    for locale in meta.get("locales", []):
-        pf = cache_dir / f"{locale}.pickle"
-        if not pf.exists():
-            return False
-        with open(pf, "rb") as fp:
-            data = pickle.load(fp)
-        with i18n._lock:
-            i18n._translations[locale] = data
-
-    i18n._cache.clear()
-    return True
-
-
 def build_context(config, logger, args, command_name, commands,
                   loader=None, paths=None):
+    """Build the context passed to a command."""
     from lib.queue import QueueStorage, Dispatcher
 
     _storage = None
@@ -117,12 +69,9 @@ def build_context(config, logger, args, command_name, commands,
 
 
 def main() -> int:
-    import os
-    import time
     started = time.perf_counter()
 
     # ─────────── Global options ───────────
-    from lib.arguments import extract_globals
     globals_, argv = extract_globals(sys.argv[1:])
 
     # ─────────── Config path ───────────
@@ -144,8 +93,6 @@ def main() -> int:
     from lib.paths import Paths
     paths = Paths.from_config(config, config_path)
     paths.ensure_all()
-
-    # Attach to config so commands can access via context['config'].paths
     config.paths = paths
 
     logger = Logger(config, ROOT_DIR)
@@ -153,31 +100,61 @@ def main() -> int:
     if globals_.verbose:
         logger.info("config: %s", config_path)
         logger.info("base:   %s", paths.base)
-        logger.info("commands: %s", paths.commands_dir)
-        logger.info("plugins:  %s", paths.plugins_dir)
 
-    # ─────────── i18n ───────────
-    from lib.i18n import configure as i18n_configure, set_locale
+    # ─────────── i18n (three layers) ───────────
     i18n_cfg = config.get("i18n", {}) or {}
     i18n = i18n_configure(
         default_locale=i18n_cfg.get("locale", "en"),
         fallback_locale=i18n_cfg.get("fallback", "en"),
         missing_log=bool(i18n_cfg.get("missing_log", True)),
         cache_size=int(i18n_cfg.get("cache_size", 4096)),
-        auto_reload=False,
     )
     if globals_.lang:
         set_locale(globals_.lang)
 
-    # i18n base directory
-    i18n.load_dir(paths.langs_dir)
+    # 1) System translations (core)
+    system_langs = ROOT_DIR / "lib" / "webui" / "i18n"
+    if system_langs.exists():
+        i18n.load_dir(system_langs, layer=Layer.SYSTEM)
+
+    # 2) Project translations
+    if paths.langs_dir.exists():
+        i18n.load_dir(paths.langs_dir, layer=Layer.PROJECT)
+
+    node_registry = NodeRegistry(
+        config,
+        role=config.get("cluster.role", "worker"),
+        meta={"pid": os.getpid()},
+        heartbeat_interval=int(config.get("cluster.heartbeat_interval", 15)),
+        ttl_seconds=int(config.get("cluster.ttl_seconds", 60)),
+    )
+    node_registry.register()
+    node_registry.start_heartbeat()
+
+    cluster_files = None
+    if config.get("cluster.enabled", False):
+        cluster_files = ClusterFiles(
+            config,
+            node_id=node_registry.node_id,
+            paths=paths,
+            role=node_registry.role,
+        )
+        cluster_files.initial_sync()
+        cluster_files.start_watcher()
+
+        # On each command, if cluster_files — expose via context
+        context_extras = {"cluster": cluster_files}
+
+    # register shutdown
+    import atexit
+    atexit.register(lambda: (node_registry.unregister(),
+                             node_registry.stop_heartbeat()))
 
     # ─────────── Parse command args ───────────
     parser = ArgumentParser()
     parser.parse(argv)
 
     # ─────────── Registry cache ───────────
-    from lib.registry_cache import RegistryCache
     registry_cache = RegistryCache(
         paths.base,
         enabled=cache_enabled,
@@ -222,10 +199,10 @@ def main() -> int:
                 loader.add_plugin_commands(p.name, p.commands_dir)
         commands = loader.load_commands()
 
-    # i18n from plugins
+    # 3) Plugin translations (highest priority)
     for p in plugin_mgr.list():
         if p.langs_dir:
-            i18n.load_dir(p.langs_dir)
+            i18n.load_dir(p.langs_dir, layer=Layer.PLUGIN)
 
     # Built-ins
     from lib.commands import BUILTIN_COMMANDS
@@ -287,13 +264,7 @@ def main() -> int:
         return 1
 
 
-def _log_verbose(globals_, logger, message: str) -> None:
-    if getattr(globals_, "verbose", False):
-        logger.info(message)
-
-
 def show_commands_list(commands):
-    """Pretty-print the command list."""
     try:
         from lib.console import console, Color
     except ImportError:
@@ -303,14 +274,20 @@ def show_commands_list(commands):
 
     console.banner("HOMER", "Command-line framework", color=Color.BRIGHT_CYAN)
 
-    if not commands:
+    visible = {
+        name: info
+        for name, info in commands.items()
+        if not info.get("hidden") and not name.startswith("_")
+    }
+
+    if not visible:
         console.warning("No commands available")
         return
 
     console.section("Available commands")
 
     grouped: dict[str, list[tuple[str, dict]]] = {}
-    for name, info in sorted(commands.items()):
+    for name, info in sorted(visible.items()):
         namespace = name.split(":")[0] if ":" in name else "general"
         grouped.setdefault(namespace, []).append((name, info))
 

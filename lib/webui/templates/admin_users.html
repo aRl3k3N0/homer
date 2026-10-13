@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+{% block title %}Users — Homer{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>{{ _('webui.admin.users.title') or 'Users' }}</h3>
+  <div>
+    <input type="search" id="u-search" class="form-control d-inline-block"
+           style="width:260px" placeholder="{{ _('webui.admin.users.search') or 'Search' }}...">
+    <button class="btn btn-primary ms-2" id="u-new">+{{ _('webui.admin.users.new') or 'New user' }}</button>
+  </div>
+</div>
+
+<div id="u-alert" class="d-none"></div>
+
+<table class="table table-sm table-hover align-middle" id="u-table">
+  <thead class="table-light">
+    <tr>
+      <th>{{ _('webui.admin.users.username') or 'Username' }}</th>
+      <th>{{ _('webui.admin.users.display_name') or 'Display name' }}</th>
+      <th>{{ _('webui.admin.users.email') or 'Email' }}</th>
+      <th>{{ _('webui.admin.users.provider') or 'Provider' }}</th>
+      <th>{{ _('webui.admin.users.roles') or 'Roles' }}</th>
+      <th>{{ _('webui.admin.users.enabled') or 'Enabled' }}</th>
+      <th class="text-end"></th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<!-- User form modal -->
+<div class="modal fade" id="u-modal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="u-modal-title">{{ _('webui.history.user') or 'User' }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">{{ _('webui.admin.users.username') or 'Username' }}</label>
+          <input type="text" class="form-control" id="f-username">
+          <div class="form-text">Only [A-Za-z0-9_.-]. Cannot be changed after creation.</div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">{{ _('webui.admin.users.display_name') or 'Display name' }}</label>
+          <input type="text" class="form-control" id="f-display">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">{{ _('webui.admin.users.email') or 'Email' }}</label>
+          <input type="email" class="form-control" id="f-email">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">{{ _('webui.login.password') or 'Password' }}</label>
+          <input type="password" class="form-control" id="f-password"
+                 autocomplete="new-password">
+          <div class="form-text" id="f-password-hint">
+            Leave empty to keep the current password.
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">{{ _('webui.admin.users.provider') or 'Provider' }}</label>
+          <select class="form-select" id="f-provider">
+            <option value="local">local</option>
+            <option value="ldap">ldap</option>
+            <option value="kerberos">kerberos</option>
+          </select>
+        </div>
+        <div class="mb-2 form-check">
+          <input class="form-check-input" type="checkbox" id="f-enabled" checked>
+          <label class="form-check-label" for="f-enabled">Enabled</label>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">{{ _('webui.admin.users.roles') or 'Roles' }}</label>
+          <div id="f-roles" class="d-flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">{{ _('webui.admin.users.cancel') or 'Cancel' }}</button>
+        <button class="btn btn-primary" id="u-save">{{ _('webui.admin.users.save') or 'Save' }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Roles modal (per user, quick assign) -->
+<div class="modal fade" id="roles-modal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Assign roles — <span id="r-username"></span></h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="r-list" class="d-flex flex-column gap-1"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">{{ _('webui.admin.users.cancel') or 'Cancel' }}</button>
+        <button class="btn btn-primary" id="r-save">{{ _('webui.admin.users.save') or 'Save' }}</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  let usersCache = [];
+  let rolesCache = [];
+  let editMode = null;   // null | 'new' | username
+  let rolesTargetUser = null;
+
+  // ─────────── Toast/alert ───────────
+
+  function showAlert(msg, kind = 'success') {
+    const el = $('u-alert');
+    el.className = `alert alert-${kind}`;
+    el.textContent = msg;
+    setTimeout(() => { el.className = 'd-none'; }, 4000);
+  }
+
+  // ─────────── Load data ───────────
+
+  async function loadRoles() {
+    const r = await fetch('/api/admin/roles', { credentials: 'same-origin' });
+    rolesCache = await r.json();
+  }
+
+  async function loadUsers() {
+    const r = await fetch('/api/admin/users', { credentials: 'same-origin' });
+    usersCache = await r.json();
+    renderUsers();
+  }
+
+  // ─────────── Render table ───────────
+
+  function passesFilter(u, q) {
+    if (!q) return true;
+    q = q.toLowerCase();
+    return (
+      u.username.toLowerCase().includes(q) ||
+      (u.display_name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q)
+    );
+  }
+
+  function renderUsers() {
+    const q = $('u-search').value.trim();
+    const tbody = $('u-table').querySelector('tbody');
+    tbody.innerHTML = '';
+
+    for (const u of usersCache) {
+      if (!passesFilter(u, q)) continue;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><b>${escapeHtml(u.username)}</b></td>
+        <td>${escapeHtml(u.display_name || '—')}</td>
+        <td>${escapeHtml(u.email || '—')}</td>
+        <td><span class="badge bg-secondary">${escapeHtml(u.provider)}</span></td>
+        <td>${u.roles.map(r => `<span class="badge bg-info text-dark me-1">${escapeHtml(r)}</span>`).join('') || '—'}</td>
+        <td>${u.enabled
+              ? '<span class="badge bg-success">yes</span>'
+              : '<span class="badge bg-danger">no</span>'}</td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-secondary" data-act="roles" data-u="${escapeHtml(u.username)}">{{ _('webui.admin.roles.title') or 'Roles' }}</button>
+          <button class="btn btn-sm btn-outline-primary"   data-act="edit"  data-u="${escapeHtml(u.username)}">{{ _('webui.admin.users.edit') or 'Edit' }}</button>
+          <button class="btn btn-sm btn-outline-danger"    data-act="del"   data-u="${escapeHtml(u.username)}">{{ _('webui.admin.users.delete') or 'Delete' }}</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+
+  // ─────────── Edit modal ───────────
+
+  function renderRoleCheckboxes(container, selected, disabled = false) {
+    container.innerHTML = '';
+    for (const r of rolesCache) {
+      const id = `role-${r.name}-${Math.random().toString(36).slice(2, 6)}`;
+      const wrap = document.createElement('div');
+      wrap.className = 'form-check';
+      wrap.innerHTML = `
+        <input class="form-check-input" type="checkbox" id="${id}"
+               value="${escapeHtml(r.name)}"
+               ${selected.includes(r.name) ? 'checked' : ''}
+               ${disabled ? 'disabled' : ''}>
+        <label class="form-check-label" for="${id}">
+          ${escapeHtml(r.name)}
+          ${r.builtin ? '<span class="badge bg-light text-dark">builtin</span>' : ''}
+        </label>
+      `;
+      container.appendChild(wrap);
+    }
+  }
+
+  function openNewUser() {
+    editMode = 'new';
+    $('u-modal-title').textContent = '{{ _('webui.admin.users.new') or 'New user' }}';
+    $('f-username').value = '';
+    $('f-username').disabled = false;
+    $('f-display').value = '';
+    $('f-email').value = '';
+    $('f-password').value = '';
+    $('f-password-hint').textContent = 'Required for local users.';
+    $('f-provider').value = 'local';
+    $('f-enabled').checked = true;
+    renderRoleCheckboxes($('f-roles'), ['viewer']);
+    new bootstrap.Modal($('u-modal')).show();
+  }
+
+  function openEditUser(username) {
+    const u = usersCache.find(x => x.username === username);
+    if (!u) return;
+    editMode = username;
+    $('u-modal-title').textContent = `{{ _('webui.admin.users.edit') or 'Edit' }}: ${u.username}`;
+    $('f-username').value = u.username;
+    $('f-username').disabled = true;
+    $('f-display').value = u.display_name || '';
+    $('f-email').value = u.email || '';
+    $('f-password').value = '';
+    $('f-password-hint').textContent = 'Leave empty to keep current password.';
+    $('f-provider').value = u.provider || 'local';
+    $('f-provider').disabled = true;
+    $('f-enabled').checked = !!u.enabled;
+    renderRoleCheckboxes($('f-roles'), u.roles || []);
+    new bootstrap.Modal($('u-modal')).show();
+  }
+
+  async function saveUser() {
+    const username = $('f-username').value.trim();
+    const display_name = $('f-display').value.trim();
+    const email = $('f-email').value.trim();
+    const password = $('f-password').value;
+    const provider = $('f-provider').value;
+    const enabled = $('f-enabled').checked;
+    const roles = Array.from(
+      $('f-roles').querySelectorAll('input[type=checkbox]:checked')
+    ).map(el => el.value);
+
+    try {
+      if (editMode === 'new') {
+        if (!username) return showAlert('Username is required', 'warning');
+        if (!password && provider === 'local')
+          return showAlert('Password is required for local users', 'warning');
+
+        const r = await fetch('/api/admin/users', {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            username, password: password || null,
+            display_name, email, provider, roles, enabled,
+          }),
+        });
+        if (!r.ok) throw new Error((await r.json()).detail || 'Create failed');
+        showAlert(`User '${username}' created`);
+      } else {
+        const r = await fetch(`/api/admin/users/${encodeURIComponent(editMode)}`, {
+          method: 'PATCH', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            display_name, email,
+            password: password || null,
+            enabled,
+          }),
+        });
+        if (!r.ok) throw new Error((await r.json()).detail || 'Update failed');
+
+        // Update roles separately
+        const r2 = await fetch(
+          `/api/admin/users/${encodeURIComponent(editMode)}/roles`,
+          {
+            method: 'PUT', credentials: 'same-origin',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({roles}),
+          }
+        );
+        if (!r2.ok) throw new Error((await r2.json()).detail || 'Roles update failed');
+        showAlert(`User '${editMode}' updated`);
+      }
+
+      bootstrap.Modal.getInstance($('u-modal')).hide();
+      await loadUsers();
+    } catch (e) {
+      showAlert(e.message, 'danger');
+    }
+  }
+
+  // ─────────── Roles modal ───────────
+
+  function openRoles(username) {
+    rolesTargetUser = username;
+    const u = usersCache.find(x => x.username === username);
+    $('r-username').textContent = username;
+    renderRoleCheckboxes($('r-list'), (u && u.roles) || []);
+    new bootstrap.Modal($('roles-modal')).show();
+  }
+
+  async function saveRoles() {
+    if (!rolesTargetUser) return;
+    const roles = Array.from(
+      $('r-list').querySelectorAll('input[type=checkbox]:checked')
+    ).map(el => el.value);
+    try {
+      const r = await fetch(
+        `/api/admin/users/${encodeURIComponent(rolesTargetUser)}/roles`,
+        {
+          method: 'PUT', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({roles}),
+        }
+      );
+      if (!r.ok) throw new Error((await r.json()).detail || 'Failed');
+      showAlert(`Roles updated for '${rolesTargetUser}'`);
+      bootstrap.Modal.getInstance($('roles-modal')).hide();
+      await loadUsers();
+    } catch (e) {
+      showAlert(e.message, 'danger');
+    }
+  }
+
+  // ─────────── Delete ───────────
+
+  async function deleteUser(username) {
+    if (!confirm(`Delete user '${username}'? This cannot be undone.`)) return;
+    try {
+      const r = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, {
+        method: 'DELETE', credentials: 'same-origin',
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || 'Delete failed');
+      showAlert(`User '${username}' deleted`);
+      await loadUsers();
+    } catch (e) {
+      showAlert(e.message, 'danger');
+    }
+  }
+
+  // ─────────── Events ───────────
+
+  $('u-new').onclick = openNewUser;
+  $('u-save').onclick = saveUser;
+  $('r-save').onclick = saveRoles;
+  $('u-search').addEventListener('input', renderUsers);
+
+  $('u-table').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    const act = btn.dataset.act;
+    const u = btn.dataset.u;
+    if (act === 'edit')  openEditUser(u);
+    if (act === 'roles') openRoles(u);
+    if (act === 'del')   deleteUser(u);
+  });
+
+  // ─────────── Utils ───────────
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+  }
+
+  // ─────────── Boot ───────────
+
+  (async () => {
+    await loadRoles();
+    await loadUsers();
+  })();
+})();
+</script>
+
+{% endblock %}

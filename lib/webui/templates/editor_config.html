@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}{{ _('webui.editor.config') }} — Homer{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-3 gap-2">
+  <h3 class="mb-0">{{ _('webui.editor.config') }}</h3>
+  <button class="btn btn-sm btn-outline-secondary" id="btn-reload">
+    {{ _('webui.common.reset') or 'Reload' }}
+  </button>
+  <button class="btn btn-sm btn-outline-primary" id="btn-export">Export JSON</button>
+  <label class="btn btn-sm btn-outline-secondary mb-0">
+    Import JSON
+    <input type="file" id="file-import" accept=".json" hidden>
+  </label>
+  <span class="text-muted small ms-2" id="status"></span>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-3">
+    <div id="tree" class="border rounded p-2"
+         style="max-height:75vh;overflow:auto;font-size:.9rem"></div>
+  </div>
+  <div class="col-md-9">
+    <div id="entries" class="border rounded p-2"
+         style="max-height:75vh;overflow:auto"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  let entries = [];
+  let filterPrefix = '';
+
+  async function load() {
+    const r = await fetch('/api/editor/config');
+    entries = await r.json();
+    renderTree();
+    renderEntries();
+    $('status').textContent = `Loaded ${entries.length} keys`;
+  }
+
+  function buildTree() {
+    const tree = {};
+    for (const e of entries) {
+      const parts = e.path.split('.');
+      let node = tree;
+      for (let i = 0; i < parts.length - 1; i++) {
+        node = (node[parts[i]] = node[parts[i]] || {__children: {}}).__children;
+      }
+      node[parts[parts.length - 1]] = {__leaf: e.path};
+    }
+    return tree;
+  }
+
+  function renderTree() {
+    const el = $('tree');
+    el.innerHTML = '';
+    const tree = buildTree();
+    renderNode(el, tree, '', 0);
+  }
+
+  function renderNode(parentEl, node, prefix, depth) {
+    for (const k of Object.keys(node).sort()) {
+      const full = prefix ? `${prefix}.${k}` : k;
+      if (node[k] && node[k].__leaf) {
+        const d = document.createElement('div');
+        d.style.paddingLeft = (depth * 12) + 'px';
+        d.style.cursor = 'pointer';
+        d.textContent = k;
+        d.addEventListener('click', () => focusKey(node[k].__leaf));
+        parentEl.appendChild(d);
+      } else if (node[k] && node[k].__children) {
+        const g = document.createElement('div');
+        g.style.paddingLeft = (depth * 12) + 'px';
+        g.style.fontWeight = 'bold';
+        g.style.marginTop = '4px';
+        g.textContent = k;
+        parentEl.appendChild(g);
+        renderNode(parentEl, node[k].__children, full, depth + 1);
+      }
+    }
+  }
+
+  function renderEntries(filter) {
+    const el = $('entries');
+    el.innerHTML = '';
+    const list = filter
+      ? entries.filter(e => e.path.startsWith(filter))
+      : entries;
+
+    for (const e of list) {
+      const row = document.createElement('div');
+      row.className = 'd-flex align-items-center gap-2 border-bottom py-1';
+      row.id = 'key-' + btoa(e.path).replace(/=/g, '');
+
+      const key = document.createElement('code');
+      key.style.minWidth = '260px';
+      key.style.wordBreak = 'break-all';
+      key.textContent = e.path;
+      row.appendChild(key);
+
+      const input = document.createElement('input');
+      input.className = 'form-control form-control-sm';
+      input.value = String(e.value ?? '');
+      input.dataset.type = e.type;
+      input.dataset.orig = String(e.value ?? '');
+      input.addEventListener('change', () => saveKey(e.path, input, e.type));
+      row.appendChild(input);
+
+      const type = document.createElement('span');
+      type.className = 'badge bg-secondary';
+      type.textContent = e.type;
+      row.appendChild(type);
+
+      if (e.locked_by) {
+        const lock = document.createElement('span');
+        lock.className = 'badge bg-warning text-dark';
+        lock.textContent = '🔒 ' + e.locked_by;
+        row.appendChild(lock);
+      }
+
+      el.appendChild(row);
+    }
+  }
+
+  function focusKey(keyPath) {
+    const id = 'key-' + btoa(keyPath).replace(/=/g, '');
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({behavior: 'smooth', block: 'center'});
+      el.querySelector('input').focus();
+    }
+  }
+
+  function castValue(raw, type) {
+    if (type === 'int') return parseInt(raw, 10);
+    if (type === 'float') return parseFloat(raw);
+    if (type === 'bool') {
+      if (['true', '1', 'yes'].includes(raw.toLowerCase())) return true;
+      if (['false', '0', 'no'].includes(raw.toLowerCase())) return false;
+      return raw;
+    }
+    if (type === 'null') return null;
+    return raw;
+  }
+
+  async function saveKey(keyPath, input, type) {
+    const newValue = castValue(input.value, type);
+    const expected = castValue(input.dataset.orig, type);
+    try {
+      const r = await fetch('/api/editor/config/' + encodeURI(keyPath), {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({value: newValue, expected_value: expected}),
+      });
+      if (!r.ok) {
+        $('status').textContent = `Error: ${await r.text()}`;
+        return;
+      }
+      input.dataset.orig = String(newValue);
+      $('status').textContent = `Saved ${keyPath}`;
+    } catch (e) {
+      $('status').textContent = 'Error: ' + e;
+    }
+  }
+
+  $('btn-reload').addEventListener('click', load);
+  $('btn-export').addEventListener('click', async () => {
+    const r = await fetch('/api/editor/config/export');
+    const data = await r.json();
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'homer-config.json';
+    a.click();
+  });
+  $('file-import').addEventListener('change', async (ev) => {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    const data = JSON.parse(text);
+    const updates = flatten(data);
+    const r = await fetch('/api/editor/config/import', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({updates}),
+    });
+    const res = await r.json();
+    $('status').textContent = 'Imported: ' + JSON.stringify(res.applied).slice(0, 200);
+    await load();
+  });
+
+  function flatten(obj, prefix = '') {
+    const out = {};
+    for (const k of Object.keys(obj)) {
+      const key = prefix ? `${prefix}.${k}` : k;
+      if (obj[k] && typeof obj[k] === 'object' && !Array.isArray(obj[k])) {
+        Object.assign(out, flatten(obj[k], key));
+      } else {
+        out[key] = obj[k];
+      }
+    }
+    return out;
+  }
+
+  load();
+})();
+</script>
+
+{% endblock %}

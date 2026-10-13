@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="{{ locale }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ _('webui.login.title') }} — Homer</title>
+  <link rel="stylesheet" href="/static/bootstrap.min.css">
+  <style>
+    body { background: #f4f6f8; }
+    .login-card {
+      max-width: 400px;
+      margin: 8vh auto;
+      padding: 2rem;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    }
+    .login-card h1 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; }
+    .error {
+      color: #c0392b; background: #fdecea;
+      padding: 0.75rem; border-radius: 4px;
+      margin-bottom: 1rem; font-size: 0.9rem;
+    }
+    .hint { text-align: center; margin-top: 1rem; font-size: 0.85rem; color: #6c757d; }
+    .lang-switch { text-align: center; margin-top: 1rem; }
+    .lang-switch a { margin: 0 0.4rem; color: #6c757d; text-decoration: none; }
+    .lang-switch a:hover { color: #000; }
+  </style>
+</head>
+<body>
+
+<div class="login-card">
+  <h1>⚙️ Homer</h1>
+
+  {% if error %}
+    <div class="error">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/login">
+    <input type="hidden" name="next" value="{{ next or '/' }}">
+
+    <div class="mb-3">
+      <label class="form-label">{{ _('webui.login.username') }}</label>
+      <input type="text" name="username" class="form-control" required autofocus
+             autocomplete="username">
+    </div>
+
+    <div class="mb-3">
+      <label class="form-label">{{ _('webui.login.password') }}</label>
+      <input type="password" name="password" class="form-control" required
+             autocomplete="current-password">
+    </div>
+
+    <button type="submit" class="btn btn-primary w-100">
+      {{ _('webui.login.submit') }}
+    </button>
+  </form>
+
+  <div class="lang-switch">
+    {% for l in available_locales() %}
+      <a href="?lang={{ l }}"
+         {% if l == locale %}style="font-weight:bold;color:#000"{% endif %}>
+        {{ l|upper }}
+      </a>
+    {% endfor %}
+  </div>
+
+  <div class="hint">{{ _('webui.login.hint') }}</div>
+</div>
+
+</body>
+</html>

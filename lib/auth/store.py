@@ -10,7 +10,7 @@ import secrets
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Any
 
 from lib.db import connect, DBError
 
@@ -631,3 +631,77 @@ class AuthStore:
     def close(self):
         if not self._external_db:
             self.db.close()
+
+    def update_user(self, username: str, *,
+                    display_name: Optional[str] = None,
+                    email: Optional[str] = None,
+                    enabled: Optional[bool] = None,
+                    password: Optional[str] = None) -> bool:
+        """
+        Update a user. Only non-None fields are touched.
+        Returns True if the user existed and was updated.
+        """
+        user = self.get_user_by_name(username)
+        if not user:
+            return False
+
+        fields = []
+        params: list[Any] = []
+
+        def _set(col: str, val: Any):
+            fields.append(f"{col} = {self._ph(len(params))}")
+            params.append(val)
+
+        if display_name is not None:
+            _set("display_name", display_name)
+        if email is not None:
+            _set("email", email)
+        if enabled is not None:
+            _set("enabled", self._bool(enabled))
+        if password:
+            _set("password_hash", hash_password(password))
+
+        if not fields:
+            return True  # nothing to change
+
+        fields.append(f"updated_at = {self._ph(len(params))}")
+        params.append(datetime.now())
+
+        params.append(user.id)
+        sql = f"UPDATE homer_users SET {', '.join(fields)} WHERE id = {self._ph(len(params) - 1)}"
+        self.db.execute(sql, params)
+        self.db.commit()
+        return True
+
+    def set_roles(self, user_id: int, roles: list[str]) -> None:
+        """
+        Replace all roles for a user. Builtin 'admin' cannot be removed by
+        this method unless it is explicitly omitted from `roles`.
+        """
+        # Delete existing
+        self.db.execute(
+            f"DELETE FROM homer_user_roles WHERE user_id = {self._ph(0)}",
+            [user_id],
+        )
+        self.db.commit()
+        # Add new
+        for role in roles:
+            self.assign_role(user_id, role)
+
+    def user_role_names(self, user_id: int) -> list[str]:
+        return self.roles_for_user(user_id)
+
+    def count_admins(self) -> int:
+        """Number of enabled users with the 'admin' role."""
+        sql = (
+            "SELECT COUNT(DISTINCT u.id) AS cnt "
+            "FROM homer_users u "
+            "JOIN homer_user_roles ur ON ur.user_id = u.id "
+            "JOIN homer_roles r ON r.id = ur.role_id "
+            "WHERE r.name = 'admin' AND u.enabled = "
+            + self._bool(True)
+        )
+        row = self.db.fetchone(sql, dictionary=True)
+        if not row:
+            return 0
+        return int(row.get("cnt") or 0) if isinstance(row, dict) else int(row[0] or 0)

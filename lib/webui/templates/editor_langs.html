@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+{% block title %}Translations — Homer{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center mb-3 gap-2">
+  <h3 class="mb-0">{{ _('webui.editor.langs') }}</h3>
+  <select id="lang-select" class="form-select form-select-sm"
+          style="max-width:180px"></select>
+  <button class="btn btn-sm btn-outline-warning" id="btn-sync">Sync from fallback</button>
+  <button class="btn btn-sm btn-primary ms-auto" id="btn-save">Save</button>
+  <span id="status" class="text-muted small"></span>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-3">
+    <div id="tree" class="border rounded p-2"
+         style="max-height:75vh;overflow:auto;font-size:.9rem"></div>
+  </div>
+  <div class="col-md-9">
+    <input type="search" id="filter" class="form-control form-control-sm mb-2"
+           placeholder="Filter keys…">
+    <div id="keys" class="border rounded p-2"
+         style="max-height:70vh;overflow:auto"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  let currentLocale = null;
+  let currentDict = {};
+  let fallbackDict = {};
+  let dirty = {};
+
+  async function loadLocales() {
+    const r = await fetch('/api/editor/langs');
+    const data = await r.json();
+    const sel = $('lang-select');
+    sel.innerHTML = '';
+    for (const loc of data.available) {
+      const o = document.createElement('option');
+      o.value = loc;
+      o.textContent = loc.toUpperCase();
+      if (loc === data.default) o.selected = true;
+      sel.appendChild(o);
+    }
+    currentLocale = sel.value;
+    await loadFallback(data.fallback);
+    await loadLocale(currentLocale);
+
+    sel.addEventListener('change', async () => {
+      currentLocale = sel.value;
+      dirty = {};
+      await loadLocale(currentLocale);
+    });
+  }
+
+  async function loadFallback(locale) {
+    const r = await fetch('/api/editor/langs/' + encodeURIComponent(locale));
+    fallbackDict = await r.json();
+  }
+
+  async function loadLocale(locale) {
+    const r = await fetch('/api/editor/langs/' + encodeURIComponent(locale));
+    currentDict = await r.json();
+    dirty = {};
+    renderTree();
+    renderKeys();
+  }
+
+  function buildTree(dict) {
+    const tree = {};
+    for (const key of Object.keys(dict)) {
+      const parts = key.split('.');
+      let node = tree;
+      for (let i = 0; i < parts.length - 1; i++) {
+        node = (node[parts[i]] = node[parts[i]] || {});
+      }
+      node[parts[parts.length - 1]] = node[parts[parts.length - 1]] || {__leaf: key};
+    }
+    return tree;
+  }
+
+  function countStats(node, dict, prefix) {
+    let total = 0, missing = 0;
+    for (const k of Object.keys(node)) {
+      if (k === '__leaf') continue;
+      const full = prefix ? `${prefix}.${k}` : k;
+      if (node[k].__leaf) {
+        total++;
+        if (!(full in dict)) missing++;
+      } else {
+        const r = countStats(node[k], dict, full);
+        total += r.total;
+        missing += r.missing;
+      }
+    }
+    return {total, missing};
+  }
+
+  function renderTree() {
+    const tree = buildTree(fallbackDict);
+    const el = $('tree');
+    el.innerHTML = '';
+    renderNode(el, tree, '', 0);
+  }
+
+  function renderNode(parentEl, node, prefix, depth) {
+    for (const k of Object.keys(node).sort()) {
+      if (k === '__leaf') continue;
+      const full = prefix ? `${prefix}.${k}` : k;
+      if (node[k].__leaf) {
+        const missing = !(full in currentDict);
+        const d = document.createElement('div');
+        d.style.paddingLeft = (depth * 12) + 'px';
+        d.style.cursor = 'pointer';
+        d.style.color = missing ? '#dc3545' : '';
+        d.textContent = k;
+        d.addEventListener('click', () => focusKey(full));
+        parentEl.appendChild(d);
+      } else {
+        const stats = countStats(node[k], currentDict, full);
+        const g = document.createElement('div');
+        g.style.paddingLeft = (depth * 12) + 'px';
+        g.style.fontWeight = 'bold';
+        g.style.marginTop = '4px';
+        g.innerHTML = `${k} <span class="text-muted">${stats.total - stats.missing}/${stats.total}</span>` +
+                      (stats.missing ? ` <span class="badge bg-danger">${stats.missing}</span>` : '');
+        parentEl.appendChild(g);
+        renderNode(parentEl, node[k], full, depth + 1);
+      }
+    }
+  }
+
+  function renderKeys() {
+    const filter = $('filter').value.trim().toLowerCase();
+    const el = $('keys');
+    el.innerHTML = '';
+    const keys = Object.keys(fallbackDict).sort();
+    const filtered = filter ? keys.filter(k => k.toLowerCase().includes(filter)) : keys;
+
+    for (const key of filtered) {
+      const cur = currentDict[key];
+      const fb = fallbackDict[key];
+      const missing = cur === undefined;
+
+      const row = document.createElement('div');
+      row.className = 'd-flex align-items-start gap-2 border-bottom py-1';
+      row.id = 'key-' + btoa(key).replace(/=/g, '');
+
+      const keyEl = document.createElement('div');
+      keyEl.className = 'text-muted small';
+      keyEl.style.minWidth = '260px';
+      keyEl.style.wordBreak = 'break-all';
+      keyEl.textContent = key;
+      row.appendChild(keyEl);
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'form-control form-control-sm';
+      input.value = cur !== undefined ? cur : '';
+      input.placeholder = fb;
+      if (missing) input.style.borderColor = '#dc3545';
+      input.addEventListener('input', () => {
+        dirty[key] = input.value;
+        input.style.borderColor = input.value ? '' : '#dc3545';
+      });
+      row.appendChild(input);
+
+      el.appendChild(row);
+    }
+  }
+
+  function focusKey(key) {
+    const el = document.getElementById('key-' + btoa(key).replace(/=/g, ''));
+    if (el) {
+      el.scrollIntoView({behavior: 'smooth', block: 'center'});
+      el.querySelector('input').focus();
+    }
+  }
+
+  async function save() {
+    if (!Object.keys(dirty).length) {
+      $('status').textContent = 'Nothing to save';
+      return;
+    }
+    $('status').textContent = 'Saving…';
+    const r = await fetch('/api/editor/langs/' + encodeURIComponent(currentLocale), {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({updates: dirty}),
+    });
+    if (!r.ok) {
+      $('status').textContent = `Error: ${await r.text()}`;
+      return;
+    }
+    $('status').textContent = 'Saved';
+    dirty = {};
+    await loadLocale(currentLocale);
+  }
+
+  async function sync() {
+    if (!confirm('Copy missing keys from fallback?')) return;
+    $('status').textContent = 'Syncing…';
+    const r = await fetch(`/api/editor/langs/${encodeURIComponent(currentLocale)}/sync`, {method: 'POST'});
+    const data = await r.json();
+    $('status').textContent = `Synced ${data.synced} keys`;
+    await loadLocale(currentLocale);
+  }
+
+  $('btn-save').addEventListener('click', save);
+  $('btn-sync').addEventListener('click', sync);
+  $('filter').addEventListener('input', renderKeys);
+
+  loadLocales();
+})();
+</script>
+
+{% endblock %}
