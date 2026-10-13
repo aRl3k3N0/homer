@@ -2,6 +2,102 @@
 {% block title %}{{ _('webui.editor.config') }} — Homer{% endblock %}
 {% block content %}
 
+<style>
+  .reg-root { display: flex; gap: .75rem; min-height: 70vh; }
+  .reg-tree, .reg-values {
+    border: 1px solid #dee2e6;
+    border-radius: .375rem;
+    background: #fff;
+    overflow: auto;
+    max-height: 75vh;
+  }
+  .reg-tree { flex: 0 0 280px; padding: .5rem; }
+  .reg-values { flex: 1 1 auto; padding: .25rem 0; }
+
+  .reg-tree ul { list-style: none; padding-left: 1rem; margin: 0; }
+  .reg-tree li { padding: 1px 0; }
+  .reg-node {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    padding: 2px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    font-size: .9rem;
+  }
+  .reg-node:hover { background: #eef4ff; }
+  .reg-node.selected { background: #d6e4ff; }
+  .reg-toggle {
+    width: 14px; height: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: .75rem; color: #666; cursor: pointer;
+  }
+  .reg-toggle.empty { visibility: hidden; }
+  .reg-icon { color: #d4a017; }
+
+  .reg-breadcrumb {
+    padding: .5rem .75rem;
+    border-bottom: 1px solid #dee2e6;
+    background: #f8f9fa;
+    font-family: Menlo, Consolas, monospace;
+    font-size: .85rem;
+    color: #555;
+  }
+
+  .reg-value-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .35rem .75rem;
+    border-bottom: 1px solid #f1f3f5;
+    cursor: default;
+  }
+  .reg-value-row:hover { background: #f8f9fa; }
+  .reg-value-row.selected { background: #e7f0ff; }
+  .reg-value-name {
+    flex: 0 0 30%;
+    font-family: Menlo, Consolas, monospace;
+    font-size: .9rem;
+    font-weight: 500;
+    color: #0d6efd;
+  }
+  .reg-value-body {
+    flex: 1 1 auto;
+    font-family: Menlo, Consolas, monospace;
+    font-size: .9rem;
+    word-break: break-all;
+    color: #212529;
+  }
+  .reg-value-type {
+    flex: 0 0 auto;
+    font-size: .75rem;
+    color: #6c757d;
+  }
+
+  .reg-context {
+    position: fixed;
+    z-index: 2000;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: .375rem;
+    box-shadow: 0 6px 20px rgba(0,0,0,.15);
+    min-width: 190px;
+    padding: .25rem 0;
+  }
+  .reg-context .item {
+    padding: .3rem .85rem;
+    cursor: pointer;
+    font-size: .875rem;
+  }
+  .reg-context .item:hover { background: #0d6efd; color: #fff; }
+  .reg-context .item.danger { color: #b02a37; }
+  .reg-context .item.danger:hover { color: #fff; background: #dc3545; }
+  .reg-context .sep {
+    height: 1px; background: #e9ecef; margin: .25rem 0;
+  }
+</style>
+
 <div class="d-flex align-items-center mb-3 gap-2">
   <h3 class="mb-0">{{ _('webui.editor.config') }}</h3>
   <button class="btn btn-sm btn-outline-secondary" id="btn-reload">
@@ -15,159 +111,510 @@
   <span class="text-muted small ms-2" id="status"></span>
 </div>
 
-<div class="row g-3">
-  <div class="col-md-3">
-    <div id="tree" class="border rounded p-2"
-         style="max-height:75vh;overflow:auto;font-size:.9rem"></div>
+<div class="reg-root">
+  <div class="reg-tree" id="tree"></div>
+  <div class="reg-values" id="values">
+    <div class="reg-breadcrumb" id="breadcrumb">(root)</div>
+    <div id="values-list"></div>
   </div>
-  <div class="col-md-9">
-    <div id="entries" class="border rounded p-2"
-         style="max-height:75vh;overflow:auto"></div>
+</div>
+
+<!-- Edit / Create value modal -->
+<div class="modal fade" id="value-modal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="value-modal-title">Value</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Key</label>
+          <input type="text" class="form-control" id="vm-key">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Type</label>
+          <select class="form-select" id="vm-type">
+            <option value="string">string</option>
+            <option value="int">int</option>
+            <option value="float">float</option>
+            <option value="bool">bool</option>
+            <option value="null">null</option>
+            <option value="list">list (JSON)</option>
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Value</label>
+          <input type="text" class="form-control" id="vm-value">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="vm-save">Save</button>
+      </div>
+    </div>
   </div>
 </div>
 
 <script>
 (function () {
   const $ = id => document.getElementById(id);
-  let entries = [];
-  let filterPrefix = '';
+  let sections = [];             // [{path, name, leaves, subsections}]
+  let selectedSection = '';
+  let sectionEntries = [];
+  let modalMode = 'edit';
+  let editingKey = null;
 
-  async function load() {
-    const r = await fetch('/api/editor/config');
-    entries = await r.json();
-    renderTree();
-    renderEntries();
-    $('status').textContent = `Loaded ${entries.length} keys`;
-  }
+  // ─────────── Load ───────────
 
-  function buildTree() {
-    const tree = {};
-    for (const e of entries) {
-      const parts = e.path.split('.');
-      let node = tree;
-      for (let i = 0; i < parts.length - 1; i++) {
-        node = (node[parts[i]] = node[parts[i]] || {__children: {}}).__children;
-      }
-      node[parts[parts.length - 1]] = {__leaf: e.path};
+  async function loadSections() {
+    const r = await fetch('/api/editor/config/tree', {credentials: 'same-origin'});
+    if (!r.ok) {
+      $('status').textContent = `Error loading tree: HTTP ${r.status}`;
+      sections = [];
+      return;
     }
-    return tree;
+    sections = await r.json();
+    $('status').textContent = `Loaded ${sections.length} sections`;
+    renderTree();
   }
+
+  async function loadSection(path) {
+    selectedSection = path;
+    const r = await fetch('/api/editor/config/section?path=' + encodeURIComponent(path),
+                          {credentials: 'same-origin'});
+    if (!r.ok) {
+      $('status').textContent = `Error loading section: HTTP ${r.status}`;
+      sectionEntries = [];
+    } else {
+      const data = await r.json();
+      sectionEntries = data.entries || [];
+    }
+    renderBreadcrumb();
+    renderValues();
+    updateSelectionHighlight();
+  }
+
+  // ─────────── Tree ───────────
 
   function renderTree() {
     const el = $('tree');
     el.innerHTML = '';
-    const tree = buildTree();
-    renderNode(el, tree, '', 0);
+
+    // Build parent -> children map.
+    // Skip the root itself (s.path === '') — otherwise it appears
+    // in its own children list and buildTreeItem recurses forever.
+    const byParent = {};
+    for (const s of sections) {
+      if (!s.path) continue;
+      const parent = s.path.includes('.')
+        ? s.path.slice(0, s.path.lastIndexOf('.'))
+        : '';
+      (byParent[parent] = byParent[parent] || []).push(s);
+    }
+    for (const k of Object.keys(byParent)) {
+      byParent[k].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    const topLevel = byParent[''] || [];
+    const rootUl = document.createElement('ul');
+    rootUl.style.paddingLeft = '0';
+
+    for (const s of topLevel) {
+      rootUl.appendChild(buildTreeItem(s, byParent, 0));
+    }
+    el.appendChild(rootUl);
+
+    expandPathTo(selectedSection);
   }
 
-  function renderNode(parentEl, node, prefix, depth) {
-    for (const k of Object.keys(node).sort()) {
-      const full = prefix ? `${prefix}.${k}` : k;
-      if (node[k] && node[k].__leaf) {
-        const d = document.createElement('div');
-        d.style.paddingLeft = (depth * 12) + 'px';
-        d.style.cursor = 'pointer';
-        d.textContent = k;
-        d.addEventListener('click', () => focusKey(node[k].__leaf));
-        parentEl.appendChild(d);
-      } else if (node[k] && node[k].__children) {
-        const g = document.createElement('div');
-        g.style.paddingLeft = (depth * 12) + 'px';
-        g.style.fontWeight = 'bold';
-        g.style.marginTop = '4px';
-        g.textContent = k;
-        parentEl.appendChild(g);
-        renderNode(parentEl, node[k].__children, full, depth + 1);
+  function buildTreeItem(section, byParent, depth) {
+    const li = document.createElement('li');
+
+    const node = document.createElement('div');
+    node.className = 'reg-node';
+    node.dataset.path = section.path;
+    if (section.path === selectedSection) node.classList.add('selected');
+
+    const toggle = document.createElement('span');
+    toggle.className = 'reg-toggle';
+    node.appendChild(toggle);
+
+    const icon = document.createElement('span');
+    icon.className = 'reg-icon';
+    icon.textContent = '📁';
+    node.appendChild(icon);
+
+    const name = document.createElement('span');
+    name.textContent = section.name;
+    node.appendChild(name);
+
+    const badge = document.createElement('span');
+    badge.className = 'text-muted small ms-auto';
+    badge.textContent = section.leaves;
+    node.appendChild(badge);
+
+    li.appendChild(node);
+
+    const children = byParent[section.path] || [];
+    let childrenUl = null;
+    if (children.length > 0) {
+      childrenUl = document.createElement('ul');
+      for (const child of children) {
+        childrenUl.appendChild(buildTreeItem(child, byParent, depth + 1));
+      }
+      li.appendChild(childrenUl);
+      toggle.textContent = '▶';
+      toggle.classList.remove('empty');
+    } else {
+      toggle.classList.add('empty');
+    }
+
+    toggle.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (!childrenUl) return;
+      const open = childrenUl.style.display !== 'none';
+      childrenUl.style.display = open ? 'none' : '';
+      toggle.textContent = open ? '▶' : '▼';
+    });
+
+    node.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      loadSection(section.path);
+    });
+
+    node.addEventListener('contextmenu', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      showSectionMenu(ev, section);
+    });
+
+    return li;
+  }
+
+  function expandPathTo(targetPath) {
+    if (!targetPath) return;
+    const parts = targetPath.split('.');
+    let prefix = '';
+    for (let i = 0; i < parts.length - 1; i++) {
+      prefix = prefix ? `${prefix}.${parts[i]}` : parts[i];
+      const node = document.querySelector(
+        `.reg-node[data-path="${CSS.escape(prefix)}"]`
+      );
+      if (node && node.parentElement) {
+        const ul = node.parentElement.querySelector(':scope > ul');
+        if (ul) {
+          ul.style.display = '';
+          const toggle = node.querySelector('.reg-toggle');
+          if (toggle) toggle.textContent = '▼';
+        }
       }
     }
   }
 
-  function renderEntries(filter) {
-    const el = $('entries');
+  function updateSelectionHighlight() {
+    document.querySelectorAll('.reg-node').forEach((n) => {
+      n.classList.toggle('selected', n.dataset.path === selectedSection);
+    });
+  }
+
+  // ─────────── Breadcrumb ───────────
+
+  function renderBreadcrumb() {
+    const el = $('breadcrumb');
+    el.textContent = selectedSection
+      ? '/' + selectedSection.replace(/\./g, ' / ')
+      : '(root)';
+  }
+
+  // ─────────── Values ───────────
+
+  function renderValues() {
+    const el = $('values-list');
     el.innerHTML = '';
-    const list = filter
-      ? entries.filter(e => e.path.startsWith(filter))
-      : entries;
 
-    for (const e of list) {
+    if (!sectionEntries.length) {
+      const empty = document.createElement('div');
+      empty.style.padding = '.75rem 1rem';
+      empty.style.color = '#6c757d';
+      empty.textContent = 'No values in this section. Right-click to add one.';
+      empty.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        showEmptyMenu(ev);
+      });
+      el.appendChild(empty);
+      return;
+    }
+
+    for (const e of sectionEntries) {
       const row = document.createElement('div');
-      row.className = 'd-flex align-items-center gap-2 border-bottom py-1';
-      row.id = 'key-' + btoa(e.path).replace(/=/g, '');
+      row.className = 'reg-value-row';
+      row.dataset.key = e.path;
 
-      const key = document.createElement('code');
-      key.style.minWidth = '260px';
-      key.style.wordBreak = 'break-all';
-      key.textContent = e.path;
-      row.appendChild(key);
+      const name = document.createElement('div');
+      name.className = 'reg-value-name';
+      name.textContent = e.name;
+      row.appendChild(name);
 
-      const input = document.createElement('input');
-      input.className = 'form-control form-control-sm';
-      input.value = String(e.value ?? '');
-      input.dataset.type = e.type;
-      input.dataset.orig = String(e.value ?? '');
-      input.addEventListener('change', () => saveKey(e.path, input, e.type));
-      row.appendChild(input);
+      const body = document.createElement('div');
+      body.className = 'reg-value-body';
+      body.textContent = formatValue(e.value, e.type);
+      row.appendChild(body);
 
-      const type = document.createElement('span');
-      type.className = 'badge bg-secondary';
+      const type = document.createElement('div');
+      type.className = 'reg-value-type';
       type.textContent = e.type;
       row.appendChild(type);
 
-      if (e.locked_by) {
-        const lock = document.createElement('span');
-        lock.className = 'badge bg-warning text-dark';
-        lock.textContent = '🔒 ' + e.locked_by;
-        row.appendChild(lock);
-      }
+      row.addEventListener('dblclick', () => openEditModal(e));
+      row.addEventListener('contextmenu', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        showValueMenu(ev, e);
+      });
 
       el.appendChild(row);
     }
+
+    el.addEventListener('contextmenu', (ev) => {
+      if (ev.target.closest('.reg-value-row')) return;
+      ev.preventDefault();
+      showEmptyMenu(ev);
+    });
   }
 
-  function focusKey(keyPath) {
-    const id = 'key-' + btoa(keyPath).replace(/=/g, '');
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({behavior: 'smooth', block: 'center'});
-      el.querySelector('input').focus();
+  function formatValue(v, type) {
+    if (v === null) return '(null)';
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  }
+
+  // ─────────── Context menu ───────────
+
+  function closeContext() {
+    const old = document.getElementById('reg-context');
+    if (old) old.remove();
+  }
+  document.addEventListener('click', closeContext);
+  document.addEventListener('scroll', closeContext, true);
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape') closeContext();
+  });
+
+  function showContext(ev, items) {
+    closeContext();
+    const box = document.createElement('div');
+    box.className = 'reg-context';
+    box.id = 'reg-context';
+    box.style.left = ev.clientX + 'px';
+    box.style.top = ev.clientY + 'px';
+    for (const it of items) {
+      if (it.sep) {
+        const sep = document.createElement('div');
+        sep.className = 'sep';
+        box.appendChild(sep);
+        continue;
+      }
+      const div = document.createElement('div');
+      div.className = 'item' + (it.danger ? ' danger' : '');
+      div.textContent = it.label;
+      div.addEventListener('click', () => {
+        closeContext();
+        it.action();
+      });
+      box.appendChild(div);
     }
+    document.body.appendChild(box);
   }
 
-  function castValue(raw, type) {
+  function showSectionMenu(ev, section) {
+    showContext(ev, [
+      {label: 'New subsection…', action: () => promptNewSection(section.path)},
+      {label: 'New value…', action: () => openCreateModal(section.path)},
+      {sep: true},
+      {label: 'Rename section…', action: () => promptRenameSection(section)},
+      {label: 'Delete section', danger: true, action: () => deleteSection(section.path)},
+    ]);
+  }
+
+  function showValueMenu(ev, entry) {
+    showContext(ev, [
+      {label: 'Modify…', action: () => openEditModal(entry)},
+      {label: 'Rename…', action: () => promptRenameValue(entry)},
+      {sep: true},
+      {label: 'Delete', danger: true, action: () => deleteValue(entry)},
+    ]);
+  }
+
+  function showEmptyMenu(ev) {
+    showContext(ev, [
+      {label: 'New value…', action: () => openCreateModal(selectedSection)},
+      {label: 'New subsection…', action: () => promptNewSection(selectedSection)},
+    ]);
+  }
+
+  // ─────────── Actions ───────────
+
+  async function promptNewSection(parentPath) {
+    const name = prompt('Section name:');
+    if (!name) return;
+    if (!/^[a-zA-Z_][a-zA-Z0-9_\-]*$/.test(name)) {
+      alert('Invalid name. Use letters, digits, _ and - only.');
+      return;
+    }
+    const path = parentPath ? `${parentPath}.${name}` : name;
+    const r = await fetch('/api/editor/config/section', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'same-origin',
+      body: JSON.stringify({path}),
+    });
+    if (!r.ok) { alert('Error: ' + await r.text()); return; }
+    await loadSections();
+    await loadSection(path);
+  }
+
+  function openCreateModal(sectionPath) {
+    modalMode = 'create';
+    editingKey = null;
+    $('value-modal-title').textContent = 'New value';
+    $('vm-key').value = sectionPath ? sectionPath + '.' : '';
+    $('vm-key').disabled = false;
+    $('vm-type').value = 'string';
+    $('vm-value').value = '';
+    new bootstrap.Modal($('value-modal')).show();
+  }
+
+  function openEditModal(entry) {
+    modalMode = 'edit';
+    editingKey = entry.path;
+    $('value-modal-title').textContent = 'Modify value';
+    $('vm-key').value = entry.path;
+    $('vm-key').disabled = true;
+    $('vm-type').value = entry.type;
+    $('vm-value').value = typeof entry.value === 'object'
+      ? JSON.stringify(entry.value)
+      : String(entry.value ?? '');
+    new bootstrap.Modal($('value-modal')).show();
+  }
+
+  function castFromInput(raw, type) {
     if (type === 'int') return parseInt(raw, 10);
     if (type === 'float') return parseFloat(raw);
     if (type === 'bool') {
-      if (['true', '1', 'yes'].includes(raw.toLowerCase())) return true;
-      if (['false', '0', 'no'].includes(raw.toLowerCase())) return false;
-      return raw;
+      if (['true', '1', 'yes', 'on'].includes(raw.toLowerCase())) return true;
+      if (['false', '0', 'no', 'off'].includes(raw.toLowerCase())) return false;
+      return Boolean(raw);
     }
     if (type === 'null') return null;
+    if (type === 'list') {
+      try { return JSON.parse(raw); }
+      catch (e) { throw new Error('Invalid JSON: ' + e.message); }
+    }
     return raw;
   }
 
-  async function saveKey(keyPath, input, type) {
-    const newValue = castValue(input.value, type);
-    const expected = castValue(input.dataset.orig, type);
+  async function saveModal() {
+    const key = $('vm-key').value.trim();
+    const type = $('vm-type').value;
+    const raw = $('vm-value').value;
+    if (!key) { alert('Key is required'); return; }
+
+    let value;
+    try { value = castFromInput(raw, type); }
+    catch (e) { alert(e.message); return; }
+
     try {
-      const r = await fetch('/api/editor/config/' + encodeURI(keyPath), {
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({value: newValue, expected_value: expected}),
-      });
-      if (!r.ok) {
-        $('status').textContent = `Error: ${await r.text()}`;
-        return;
+      if (modalMode === 'create') {
+        const r = await fetch('/api/editor/config/value', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          credentials: 'same-origin',
+          body: JSON.stringify({path: key, value}),
+        });
+        if (!r.ok) throw new Error(await r.text());
+      } else {
+        const r = await fetch('/api/editor/config/' + encodeURIComponent(key), {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          credentials: 'same-origin',
+          body: JSON.stringify({value}),
+        });
+        if (!r.ok) throw new Error(await r.text());
       }
-      input.dataset.orig = String(newValue);
-      $('status').textContent = `Saved ${keyPath}`;
+      bootstrap.Modal.getInstance($('value-modal')).hide();
+      await loadSections();
+      await loadSection(selectedSection);
     } catch (e) {
-      $('status').textContent = 'Error: ' + e;
+      alert('Error: ' + e.message);
     }
   }
 
-  $('btn-reload').addEventListener('click', load);
+  async function deleteValue(entry) {
+    if (!confirm(`Delete value "${entry.name}"?`)) return;
+    const r = await fetch('/api/editor/config/' + encodeURIComponent(entry.path), {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+    if (!r.ok) { alert('Error: ' + await r.text()); return; }
+    await loadSection(selectedSection);
+  }
+
+  async function promptRenameValue(entry) {
+    const newName = prompt('New name:', entry.name);
+    if (!newName || newName === entry.name) return;
+    const parent = entry.path.includes('.')
+      ? entry.path.slice(0, entry.path.lastIndexOf('.'))
+      : '';
+    const newPath = parent ? `${parent}.${newName}` : newName;
+    const r = await fetch('/api/editor/config/rename', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'same-origin',
+      body: JSON.stringify({old_path: entry.path, new_path: newPath}),
+    });
+    if (!r.ok) { alert('Error: ' + await r.text()); return; }
+    await loadSection(selectedSection);
+  }
+
+  async function promptRenameSection(section) {
+    const newName = prompt('New name:', section.name);
+    if (!newName || newName === section.name) return;
+    const parent = section.path.includes('.')
+      ? section.path.slice(0, section.path.lastIndexOf('.'))
+      : '';
+    const newPath = parent ? `${parent}.${newName}` : newName;
+    const r = await fetch('/api/editor/config/rename', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'same-origin',
+      body: JSON.stringify({old_path: section.path, new_path: newPath}),
+    });
+    if (!r.ok) { alert('Error: ' + await r.text()); return; }
+    await loadSections();
+    await loadSection(newPath);
+  }
+
+  async function deleteSection(path) {
+    if (!confirm(`Delete section "${path}"? Section must be empty.`)) return;
+    const r = await fetch('/api/editor/config/section?path=' + encodeURIComponent(path), {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+    if (!r.ok) { alert('Error: ' + await r.text()); return; }
+    await loadSections();
+    await loadSection('');
+  }
+
+  // ─────────── Buttons ───────────
+
+  $('btn-reload').addEventListener('click', async () => {
+    await loadSections();
+    await loadSection(selectedSection);
+  });
+
   $('btn-export').addEventListener('click', async () => {
-    const r = await fetch('/api/editor/config/export');
+    const r = await fetch('/api/editor/config/export', {credentials: 'same-origin'});
     const data = await r.json();
     const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
     const a = document.createElement('a');
@@ -175,21 +622,28 @@
     a.download = 'homer-config.json';
     a.click();
   });
+
   $('file-import').addEventListener('change', async (ev) => {
     const file = ev.target.files[0];
     if (!file) return;
     const text = await file.text();
-    const data = JSON.parse(text);
+    let data;
+    try { data = JSON.parse(text); }
+    catch (e) { alert('Invalid JSON: ' + e.message); return; }
     const updates = flatten(data);
     const r = await fetch('/api/editor/config/import', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
+      credentials: 'same-origin',
       body: JSON.stringify({updates}),
     });
     const res = await r.json();
-    $('status').textContent = 'Imported: ' + JSON.stringify(res.applied).slice(0, 200);
-    await load();
+    alert('Imported: ' + Object.keys(res.applied).length + ' keys');
+    await loadSections();
+    await loadSection(selectedSection);
   });
+
+  $('vm-save').addEventListener('click', saveModal);
 
   function flatten(obj, prefix = '') {
     const out = {};
@@ -204,7 +658,17 @@
     return out;
   }
 
-  load();
+  // ─────────── Init ───────────
+
+  (async () => {
+    await loadSections();
+
+    // Auto-select the first top-level section so the right pane
+    // is never empty on first load.
+    const firstTop = sections.find(s => s.path && !s.path.includes('.'));
+    const initialPath = firstTop ? firstTop.path : '';
+    await loadSection(initialPath);
+  })();
 })();
 </script>
 

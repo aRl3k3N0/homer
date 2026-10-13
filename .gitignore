@@ -47,3 +47,4 @@ coverage.lcov
 
 .benchmarks/
 benchmark.json
+config/

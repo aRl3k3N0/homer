@@ -582,9 +582,24 @@ class AuthStore:
 
     def create_session(self, user_id: int, *, lifetime_seconds: int = 86400,
                        ip: str = None, user_agent: str = None) -> str:
+        """
+        Create a session row and return its id.
+
+        `lifetime_seconds` is coerced to int with a sane default; if the
+        value is invalid (None, negative, 0), we fall back to 86400.
+        """
+        try:
+            lifetime_seconds = int(lifetime_seconds)
+        except (TypeError, ValueError):
+            lifetime_seconds = 86400
+
+        if lifetime_seconds <= 0:
+            lifetime_seconds = 86400
+
         sid = uuid.uuid4().hex
         now = datetime.now()
         expires = now + timedelta(seconds=lifetime_seconds)
+
         self.db.execute(
             f"INSERT INTO homer_sessions "
             f"(id, user_id, created_at, expires_at, ip, user_agent) "
@@ -596,6 +611,10 @@ class AuthStore:
         return sid
 
     def get_session(self, sid: str) -> Optional[User]:
+        """
+        Return the user for a session id, if the session exists and is
+        not expired. Robust against NULL/None timestamps (legacy rows).
+        """
         row = self.db.fetchone(
             f"SELECT user_id, expires_at FROM homer_sessions "
             f"WHERE id = {self._ph(0)}",
@@ -603,16 +622,37 @@ class AuthStore:
         )
         if not row:
             return None
-        expires = row['expires_at'] if isinstance(row, dict) else row[1]
+
+        user_id = row["user_id"] if isinstance(row, dict) else row[0]
+        expires = row["expires_at"] if isinstance(row, dict) else row[1]
+
+        # Normalize expires: accept None, str, datetime
+        if expires is None:
+            # No expiry recorded -- treat as immediately invalid
+            self.delete_session(sid)
+            return None
+
         if isinstance(expires, str):
             try:
                 expires = datetime.fromisoformat(expires)
             except ValueError:
-                return None
+                # Try SQLite default format
+                try:
+                    expires = datetime.strptime(expires, "%Y-%m-%d %H:%M:%S")
+                except ValueError:
+                    self.delete_session(sid)
+                    return None
+
+        if not isinstance(expires, datetime):
+            # Unknown format -- do not trust this session
+            self.delete_session(sid)
+            return None
+
         if expires < datetime.now():
             self.delete_session(sid)
             return None
-        return self.get_user(row['user_id'] if isinstance(row, dict) else row[0])
+
+        return self.get_user(user_id)
 
     def delete_session(self, sid: str):
         self.db.execute(
@@ -621,12 +661,27 @@ class AuthStore:
         self.db.commit()
 
     def purge_expired_sessions(self) -> int:
+        """
+        Delete expired sessions AND sessions with NULL expires_at.
+        Returns the number of deleted rows.
+        """
+        now = datetime.now()
+        # 1) expired
         cur = self.db.execute(
             f"DELETE FROM homer_sessions WHERE expires_at < {self._ph(0)}",
-            [datetime.now()],
+            [now],
         )
+        count = cur.rowcount
+        # 2) NULL
+        try:
+            cur2 = self.db.execute(
+                "DELETE FROM homer_sessions WHERE expires_at IS NULL"
+            )
+            count += cur2.rowcount
+        except Exception:
+            pass
         self.db.commit()
-        return cur.rowcount
+        return count
 
     def close(self):
         if not self._external_db:

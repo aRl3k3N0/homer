@@ -12,7 +12,12 @@ HTML:
     GET /editor/langs                          -- translations editor
 
 Config registry API:
-    GET    /api/editor/config                  -- list all entries
+    GET    /api/editor/config/tree             -- sections tree (regedit style)
+    GET    /api/editor/config/section          -- leaves of a section
+    POST   /api/editor/config/section          -- create empty section
+    DELETE /api/editor/config/section          -- delete empty section
+    POST   /api/editor/config/value            -- create new value in a section
+    POST   /api/editor/config/rename           -- rename value or section
     GET    /api/editor/config/export           -- export merged config as JSON
     POST   /api/editor/config/import           -- import (merge) config
     GET    /api/editor/config/{key_path}       -- read one entry
@@ -44,13 +49,16 @@ Translations API:
     GET    /api/editor/langs/{locale}          -- flat dictionary
     PUT    /api/editor/langs/{locale}          -- apply updates
     POST   /api/editor/langs/{locale}/sync     -- copy missing from fallback
+
+IMPORTANT: route declaration order matters. Specific literal paths
+(e.g. /tree, /section, /value, /rename) MUST come BEFORE the greedy
+`{key_path:path}` routes, otherwise FastAPI will match "tree" as a
+key name and return 404.
 """
 
 from __future__ import annotations
 
-import base64
 import difflib
-import hashlib
 import json
 import re
 from pathlib import Path
@@ -137,6 +145,20 @@ class ConfigSetReq(BaseModel):
     expected_value: Any = None
 
 
+class SectionCreateReq(BaseModel):
+    path: str
+
+
+class ValueCreateReq(BaseModel):
+    path: str
+    value: Any
+
+
+class RenameReq(BaseModel):
+    old_path: str
+    new_path: str
+
+
 class LangSetReq(BaseModel):
     updates: dict[str, Optional[str]]
 
@@ -155,10 +177,6 @@ class ConfigImportReq(BaseModel):
 # ═══════════════════════════════════════════════════════════════
 #           Helpers
 # ═══════════════════════════════════════════════════════════════
-
-def _hash(content: str) -> str:
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
 
 def _get_cluster_files(state: WebUIState):
     """
@@ -193,8 +211,8 @@ def _check_key_perm(state: WebUIState, user, key_path: str) -> None:
                 - pattern: "^.*"
                   roles: [admin, developer]
 
-    The first matching pattern wins. If no rule matches, only
-    users with 'admin' role are allowed.
+    The first matching pattern wins. If no rule matches, only users
+    with 'admin' role are allowed.
     """
     rules = state.config.get("webui.editor.config.key_permissions") or []
     user_roles = set(getattr(user, "roles", []) or [])
@@ -217,7 +235,6 @@ def _check_key_perm(state: WebUIState, user, key_path: str) -> None:
             f"{', '.join(sorted(allowed_roles))}",
         )
 
-    # No rule matched: admin-only by default
     if "admin" in user_roles:
         return
     raise HTTPException(403, f"Key '{key_path}' is admin-only")
@@ -255,10 +272,11 @@ def _delete_path(doc: dict, path: str) -> None:
         del cur[parts[-1]]
 
 
-def _apply_lang_updates(target_file: Path, updates: dict[str, Optional[str]]) -> None:
+def _apply_lang_updates(target_file: Path,
+                        updates: dict[str, Optional[str]]) -> None:
     """
-    Apply dot-separated updates to a YAML file, preserving
-    comments and key order when ruamel.yaml is installed.
+    Apply dot-separated updates to a YAML file, preserving comments
+    and key order when ruamel.yaml is installed.
     """
     try:
         from ruamel.yaml import YAML
@@ -390,38 +408,52 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
     # ═══════════════════════════════════════════════════════════
     #   Config registry API
     # ═══════════════════════════════════════════════════════════
+    #
+    # ORDER MATTERS. Specific literal paths (/tree, /section, /value,
+    # /rename, /export, /import) MUST be declared BEFORE the greedy
+    # {key_path:path} routes. Otherwise FastAPI will match /tree as
+    # key_path="tree" and return 404 "Key not found".
 
-    @router.get("/api/editor/config",
+    # ─── 1) Tree ───
+
+    @router.get("/api/editor/config/tree",
                 dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
-    def api_config_list():
-        entries = registry.list_entries()
-        active_locks = {l.resource: l.owner for l in locks.list()}
+    def api_config_tree():
+        """
+        Sections of the merged config plus leaf/subsection counts.
+        Leaves themselves are not returned here; use /section.
+        """
+        sections = registry.list_sections()          # includes ''
+        leaf_counts = {s: len(registry.list_leaves_of(s)) for s in sections}
+
+        sub_counts: dict[str, int] = {s: 0 for s in sections}
+        for s in sections:
+            if not s:
+                continue
+            parent = s.rsplit(".", 1)[0] if "." in s else ""
+            sub_counts[parent] = sub_counts.get(parent, 0) + 1
+
         return [
             {
-                "path": e.path,
-                "value": e.value,
-                "type": e.type,
-                "source": e.source,
-                "locked_by": active_locks.get(f"config:{e.path}"),
+                "path": s,
+                "name": s.rsplit(".", 1)[-1] if s else "(root)",
+                "leaves": leaf_counts.get(s, 0),
+                "subsections": sub_counts.get(s, 0),
             }
-            for e in entries
+            for s in sections
         ]
+
+    # ─── 2) Export / import ───
 
     @router.get("/api/editor/config/export",
                 dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
     def api_config_export():
-        """Export merged config as JSON."""
         return JSONResponse(state.config.all())
 
     @router.post("/api/editor/config/import",
                  dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
     def api_config_import(req: ConfigImportReq,
                           user=Depends(deps.current_user)):
-        """
-        Merge incoming dict into config. Each leaf is applied via
-        registry.set() (with expected_value=None for a blind write).
-        Returns applied / failed per path.
-        """
         applied: dict[str, str] = {}
         for path, value in req.updates.items():
             try:
@@ -433,6 +465,80 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
             except ConfigRegistryError as e:
                 applied[path] = f"error: {e}"
         return {"applied": applied}
+
+    # ─── 3) Sections ───
+
+    @router.get("/api/editor/config/section",
+                dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
+    def api_config_section(path: str = ""):
+        try:
+            entries = registry.list_leaves_of(path)
+        except Exception as e:
+            raise HTTPException(400, str(e))
+        return {
+            "path": path,
+            "entries": [
+                {
+                    "path": e.path,
+                    "name": e.path.rsplit(".", 1)[-1],
+                    "value": e.value,
+                    "type": e.type,
+                    "source": e.source,
+                }
+                for e in entries
+            ],
+        }
+
+    @router.post("/api/editor/config/section",
+                 dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
+    def api_config_create_section(req: SectionCreateReq,
+                                  user=Depends(deps.current_user)):
+        _check_key_perm(state, user, req.path)
+        try:
+            registry.create_section(req.path)
+        except ConfigRegistryError as e:
+            raise HTTPException(409, str(e))
+        return {"created": req.path}
+
+    @router.delete("/api/editor/config/section",
+                   dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
+    def api_config_delete_section(path: str,
+                                  user=Depends(deps.current_user)):
+        _check_key_perm(state, user, path)
+        try:
+            registry.delete_section(path)
+        except ConfigRegistryError as e:
+            raise HTTPException(409, str(e))
+        return {"deleted": path}
+
+    # ─── 4) Values ───
+
+    @router.post("/api/editor/config/value",
+                 dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
+    def api_config_create_value(req: ValueCreateReq,
+                                user=Depends(deps.current_user)):
+        _check_key_perm(state, user, req.path)
+        try:
+            entry = registry.create_value(req.path, req.value)
+        except ConfigRegistryError as e:
+            raise HTTPException(409, str(e))
+        return {"path": entry.path, "value": entry.value, "type": entry.type}
+
+    # ─── 5) Rename ───
+
+    @router.post("/api/editor/config/rename",
+                 dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
+    def api_config_rename(req: RenameReq,
+                          user=Depends(deps.current_user)):
+        _check_key_perm(state, user, req.old_path)
+        _check_key_perm(state, user, req.new_path)
+        try:
+            registry.rename(req.old_path, req.new_path)
+        except ConfigRegistryError as e:
+            raise HTTPException(409, str(e))
+        return {"old": req.old_path, "new": req.new_path}
+
+    # ─── 6) Greedy per-key routes (MUST BE LAST) ───
 
     @router.get("/api/editor/config/{key_path:path}",
                 dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
@@ -451,10 +557,8 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
     def api_config_set(key_path: str, req: ConfigSetReq,
                        user=Depends(deps.current_user)):
-        # 1) key-level permission (regex rules from config.yml)
         _check_key_perm(state, user, key_path)
 
-        # 2) lock check
         resource = f"config:{key_path}"
         lock = locks.get(resource)
         if lock and lock.owner != user.username:
@@ -462,20 +566,15 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 423, f"Locked by {lock.owner} until {lock.expires_at}"
             )
 
-        # 3) capture before state
         before = registry.get(key_path)
         before_value = before.value if before else None
 
-        # 4) write to disk (config file)
         try:
-            entry = registry.set(
-                key_path, req.value,
-                expected_value=req.expected_value,
-            )
+            entry = registry.set(key_path, req.value,
+                                 expected_value=req.expected_value)
         except ConfigRegistryError as e:
             raise HTTPException(409, str(e))
 
-        # 5) record history
         try:
             history.record(
                 user=user.username,
@@ -489,18 +588,12 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         except Exception:
             pass
 
-        # 6) publish to cluster (so other nodes pull the change)
-        if cluster_enabled:
+        if cluster_enabled and entry.source:
             try:
-                from lib.paths import log_dir  # noqa: F401  (import side effect)
-                # Config lives in one of the source files (or config.yml).
-                source_rel = entry.source or "config.yml"
-                # Normalize: source paths are relative to project base
                 cluster_files.write(
                     category="config",
-                    rel_path=source_rel,
-                    content=Path(paths.base / source_rel)
-                            .read_text(encoding="utf-8"),
+                    rel_path=entry.source,
+                    content=Path(paths.base / entry.source).read_text(encoding="utf-8"),
                     author=user.username,
                 )
             except Exception:
@@ -545,14 +638,12 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         except Exception:
             pass
 
-        # Publish to cluster
         if cluster_enabled and before and before.source:
             try:
                 cluster_files.write(
                     category="config",
                     rel_path=before.source,
-                    content=Path(paths.base / before.source)
-                            .read_text(encoding="utf-8"),
+                    content=Path(paths.base / before.source).read_text(encoding="utf-8"),
                     author=user.username,
                 )
             except Exception:
@@ -612,40 +703,32 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         if not user.has_perm(perm):
             raise HTTPException(403)
 
-        # Editing plugin.json requires plugin admin perm
         if (category == "plugins"
                 and req.path.endswith(PLUGIN_MANIFEST_SUFFIX)
                 and not user.has_perm(PERM_EDITOR_PLUGINS_ADMIN)):
             raise HTTPException(403, "Editing plugin.json requires plugin admin")
 
-        # Lock check
         resource = f"file:{category}:{req.path}"
         lock = locks.get(resource)
         if lock and lock.owner != user.username:
             raise HTTPException(423, f"Locked by {lock.owner}")
 
-        # Capture before for history
         before_content: Optional[str] = None
         try:
             _, before_content = editor.read(category, req.path)
         except Exception:
             before_content = None
 
-        # ─── Write ───
         try:
             if cluster_enabled:
-                # Write to DB; watcher on every node updates the disk.
-                # Local disk is also updated immediately by ClusterFiles.
                 cluster_files.write(
                     category=category,
                     rel_path=req.path,
                     content=req.content,
                     author=user.username,
                 )
-                # Build info from local file to keep API consistent
                 info = editor.info(category, req.path)
             else:
-                # Standalone: write directly to disk with conflict check
                 info = editor.write(
                     category, req.path, req.content,
                     expected_checksum=req.expected_checksum,
@@ -658,7 +741,6 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         except EditorError as e:
             raise HTTPException(400, str(e))
 
-        # History
         try:
             history.record(
                 user=user.username,
@@ -695,7 +777,6 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 and not user.has_perm(PERM_EDITOR_PLUGINS_ADMIN)):
             raise HTTPException(403)
 
-        # Capture before for history
         before_content: Optional[str] = None
         try:
             _, before_content = editor.read(category, req.path)
@@ -709,7 +790,6 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                     rel_path=req.path,
                     author=user.username,
                 )
-                # Also remove the file locally if watcher hasn't done it yet
                 try:
                     editor.delete(category, req.path)
                 except Exception:
@@ -806,7 +886,7 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
             {
                 "resource": l.resource,
                 "owner": l.owner,
-                "expires_at": l.expires_at.isoformat(),
+                "expires_at": l.expires_at.isoformat() if l.expires_at else None,
             }
             for l in locks.list()
         ]
@@ -829,7 +909,7 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
             "resource": info.resource,
             "owner": info.owner,
             "token": info.token,
-            "expires_at": info.expires_at.isoformat(),
+            "expires_at": info.expires_at.isoformat() if info.expires_at else None,
         }
 
     @router.post("/api/editor/lock/refresh")
@@ -844,7 +924,7 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         return {
             "resource": info.resource,
             "token": info.token,
-            "expires_at": info.expires_at.isoformat(),
+            "expires_at": info.expires_at.isoformat() if info.expires_at else None,
         }
 
     @router.post("/api/editor/lock/release")
@@ -995,7 +1075,6 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         _apply_lang_updates(target_file, req.updates)
         get_i18n().reload()
 
-        # History
         try:
             history.record(
                 user=user.username,
@@ -1010,7 +1089,6 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         except Exception:
             pass
 
-        # Publish to cluster
         if cluster_enabled:
             try:
                 cluster_files.write(
