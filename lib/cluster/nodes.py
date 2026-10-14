@@ -21,8 +21,20 @@ from typing import Optional
 from lib.db import connect, BaseDB, DBError
 
 
-DDL_NODE_COMMANDS = {
+DDL = {
     "sqlite": """
+        CREATE TABLE IF NOT EXISTS homer_nodes (
+            id           TEXT PRIMARY KEY,
+            hostname     TEXT NOT NULL,
+            ip           TEXT,
+            started_at   TEXT NOT NULL,
+            last_seen    TEXT NOT NULL,
+            role         TEXT DEFAULT 'worker',
+            version      TEXT,
+            meta         TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_nodes_last_seen
+            ON homer_nodes(last_seen);
         CREATE TABLE IF NOT EXISTS homer_node_commands (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             node_id    TEXT NOT NULL,
@@ -33,8 +45,35 @@ DDL_NODE_COMMANDS = {
         );
         CREATE INDEX IF NOT EXISTS idx_node_commands_node
             ON homer_node_commands(node_id, picked_at);
+
+        CREATE TABLE IF NOT EXISTS homer_advisory_locks (
+            name        TEXT PRIMARY KEY,
+            token       TEXT NOT NULL,
+            locked_at   TEXT NOT NULL,
+            expires_at  TEXT NOT NULL
+        );
     """,
     "postgres": """
+        CREATE TABLE IF NOT EXISTS homer_nodes (
+            id           VARCHAR(64) PRIMARY KEY,
+            hostname     VARCHAR(255) NOT NULL,
+            ip           VARCHAR(64),
+            started_at   TIMESTAMP NOT NULL,
+            last_seen    TIMESTAMP NOT NULL,
+            role         VARCHAR(32) NOT NULL DEFAULT 'worker',
+            version      VARCHAR(32),
+            meta         TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_nodes_last_seen
+            ON homer_nodes(last_seen);
+
+        CREATE TABLE IF NOT EXISTS homer_advisory_locks (
+            name        VARCHAR(255) PRIMARY KEY,
+            token       VARCHAR(64) NOT NULL,
+            locked_at   TIMESTAMP NOT NULL,
+            expires_at  TIMESTAMP NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS homer_node_commands (
             id         SERIAL PRIMARY KEY,
             node_id    VARCHAR(64) NOT NULL,
@@ -43,16 +82,30 @@ DDL_NODE_COMMANDS = {
             created_at TIMESTAMP NOT NULL,
             picked_at  TIMESTAMP
         );
-        CREATE TABLE IF NOT EXISTS homer_advisory_locks (
+        CREATE INDEX IF NOT EXISTS idx_node_commands_node
+            ON homer_node_commands(node_id, picked_at);
+
+         CREATE TABLE IF NOT EXISTS homer_advisory_locks (
             name        VARCHAR(255) PRIMARY KEY,
             token       VARCHAR(64) NOT NULL,
             locked_at   TIMESTAMP NOT NULL,
             expires_at  TIMESTAMP NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_node_commands_node
-            ON homer_node_commands(node_id, picked_at);
     """,
     "mysql": """
+        CREATE TABLE IF NOT EXISTS homer_nodes (
+            id           VARCHAR(64) PRIMARY KEY,
+            hostname     VARCHAR(255) NOT NULL,
+            ip           VARCHAR(64),
+            started_at   DATETIME NOT NULL,
+            last_seen    DATETIME NOT NULL,
+            role         VARCHAR(32) NOT NULL DEFAULT 'worker',
+            version      VARCHAR(32),
+            meta         TEXT
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+        CREATE INDEX idx_nodes_last_seen
+            ON homer_nodes(last_seen);
+
         CREATE TABLE IF NOT EXISTS homer_node_commands (
             id         INT AUTO_INCREMENT PRIMARY KEY,
             node_id    VARCHAR(64) NOT NULL,
@@ -63,8 +116,31 @@ DDL_NODE_COMMANDS = {
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
         CREATE INDEX idx_node_commands_node
             ON homer_node_commands(node_id, picked_at);
+
+        CREATE TABLE IF NOT EXISTS homer_advisory_locks (
+            name        VARCHAR(255) PRIMARY KEY,
+            token       VARCHAR(64) NOT NULL,
+            locked_at   DATETIME NOT NULL,
+            expires_at  DATETIME NOT NULL
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     """,
     "oracle": """
+        BEGIN
+            EXECUTE IMMEDIATE '
+                CREATE TABLE homer_nodes (
+                    id           VARCHAR2(64) PRIMARY KEY,
+                    hostname     VARCHAR2(255) NOT NULL,
+                    ip           VARCHAR2(64),
+                    started_at   TIMESTAMP NOT NULL,
+                    last_seen    TIMESTAMP NOT NULL,
+                    role         VARCHAR2(32) DEFAULT ''worker'' NOT NULL,
+                    version      VARCHAR2(32),
+                    meta         CLOB
+                )';
+        EXCEPTION WHEN OTHERS THEN
+            IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
+
         BEGIN
             EXECUTE IMMEDIATE '
                 CREATE TABLE homer_node_commands (
@@ -74,6 +150,18 @@ DDL_NODE_COMMANDS = {
                     payload    CLOB,
                     created_at TIMESTAMP NOT NULL,
                     picked_at  TIMESTAMP
+                )';
+        EXCEPTION WHEN OTHERS THEN
+            IF SQLCODE != -955 THEN RAISE; END IF;
+        END;
+
+        BEGIN
+            EXECUTE IMMEDIATE '
+                CREATE TABLE homer_advisory_locks (
+                    name        VARCHAR2(255) PRIMARY KEY,
+                    token       VARCHAR2(64) NOT NULL,
+                    locked_at   TIMESTAMP NOT NULL,
+                    expires_at  TIMESTAMP NOT NULL
                 )';
         EXCEPTION WHEN OTHERS THEN
             IF SQLCODE != -955 THEN RAISE; END IF;
@@ -138,7 +226,7 @@ class NodeRegistry:
         return "%s"
 
     def _init_schema(self):
-        ddl = DDL_NODE_COMMANDS.get(self._driver())
+        ddl = DDL.get(self._driver())
         if ddl:
             if self._driver() == "oracle":
                 cur = self.db.cursor()

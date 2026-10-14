@@ -7,9 +7,22 @@ from __future__ import annotations
 from collections.abc import Sequence
 from contextlib import contextmanager
 from typing import Any, Optional
-
+from datetime import datetime, date
 from lib.tracing import span
 
+def _serialize_param(value):
+    """
+    Приводит значение к типу, который поддерживает DB-API.
+
+    - datetime/date -> ISO-строка
+    - dict/list -> JSON-строка (если драйвер не умеет)
+    - остальное как есть
+    """
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M:%S.%f")
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
 
 class DBError(Exception):
     """Общая ошибка уровня БД Homer"""
@@ -125,33 +138,26 @@ class BaseDB:
     def cursor(self, dictionary=False):
         return self._make_cursor(dictionary=dictionary)
 
-    def execute(
-        self, sql: str, params: Optional[Sequence[Any]] = None, dictionary: bool = False
-    ) -> Any:
-        from lib.metrics import inc_db_query
-
-        inc_db_query(self.driver_name, 'execute')
-
-        with span(
-            f'db.{self.driver_name}.execute',
-            kind='client',
-            attributes={
-                'db.system': self.driver_name,
-                'db.statement': sql[:200],
-                'db.operation': sql.strip().split(maxsplit=1)[0].upper()[:20],
-            },
-        ):
-            cur = self.cursor(dictionary=dictionary)
-            if params is None:
-                cur.execute(sql)
-            else:
-                cur.execute(sql, params)
-            return cur
+    def execute(self, sql, params=None, dictionary=False):
+        cur = self.cursor(dictionary=dictionary)
+        if params is None:
+            cur.execute(sql)
+        else:
+            cur.execute(sql, self._prepare_params(params))
+        return cur
 
     def executemany(self, sql, seq_params, dictionary=False):
         cur = self.cursor(dictionary=dictionary)
-        cur.executemany(sql, seq_params)
+        cur.executemany(sql, [self._prepare_params(p) for p in seq_params])
         return cur
+
+    @staticmethod
+    def _prepare_params(params):
+        if params is None:
+            return None
+        if isinstance(params, dict):
+            return {k: _serialize_param(v) for k, v in params.items()}
+        return [_serialize_param(v) for v in params]
 
     def fetchall(
         self, sql: str, params: Optional[Sequence[Any]] = None, dictionary: bool = False

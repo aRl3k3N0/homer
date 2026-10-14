@@ -12,7 +12,7 @@ All routes live in `lib/webui/routers/`. This module wires everything:
 """
 
 from __future__ import annotations
-
+from contextlib import asynccontextmanager
 import asyncio
 import logging
 from pathlib import Path
@@ -51,6 +51,59 @@ TAGS_METADATA = [
     {"name": "system", "description": "Health and metrics."},
 ]
 
+# lib/webui/app.py — top-level (модуль)
+
+async def _publisher_loop(state, logger, hub):
+    """
+    Periodically snapshots jobs and broadcasts events via WS hub.
+    Runs until cancelled.
+    """
+    from lib.webui.deps import job_to_dict
+
+    last_snapshot: dict[int, str] = {}
+    last_stats: dict = {}
+
+    while True:
+        try:
+            storage = state.get_storage()
+            try:
+                jobs = storage.list(limit=500)
+                stats = storage.stats()
+            finally:
+                storage.close()
+
+            current = {j.id: j.status for j in jobs}
+
+            for j in jobs:
+                if j.id not in last_snapshot:
+                    await hub.broadcast({
+                        "type": "job.created",
+                        "job": job_to_dict(j),
+                    })
+                elif last_snapshot[j.id] != j.status:
+                    await hub.broadcast({
+                        "type": "job.updated",
+                        "job": job_to_dict(j),
+                    })
+
+            for jid in set(last_snapshot) - set(current):
+                await hub.broadcast({"type": "job.removed", "job_id": jid})
+
+            if stats != last_stats:
+                await hub.broadcast({"type": "stats.updated", "stats": stats})
+                last_stats = stats
+
+            last_snapshot = current
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            if logger is not None:
+                try:
+                    logger.warning(f"publisher error: {e}", command="webui")
+                except Exception:
+                    pass
+
+        await asyncio.sleep(2)
 
 def create_app(config, root_dir=None, auth=None, enable_docs=True, logger=None):
     """
@@ -71,6 +124,29 @@ def create_app(config, root_dir=None, auth=None, enable_docs=True, logger=None):
 
     root_dir = Path(root_dir) if root_dir else Path(".").resolve()
 
+    # ─── Определяем lifespan до создания FastAPI ───
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # ────── startup ──────
+        publisher_task = asyncio.create_task(_publisher_loop(state, logger, hub))
+        app.state._publisher_task = publisher_task
+
+        try:
+            yield
+        finally:
+            # ────── shutdown ──────
+            if publisher_task and not publisher_task.done():
+                publisher_task.cancel()
+                try:
+                    await publisher_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+            try:
+                state.close()
+            except Exception:
+                pass
+
     app = FastAPI(
         title="Homer Queue API",
         description="REST API for monitoring and controlling the Homer queue.",
@@ -83,6 +159,7 @@ def create_app(config, root_dir=None, auth=None, enable_docs=True, logger=None):
         docs_url="/docs" if enable_docs else None,
         redoc_url="/redoc" if enable_docs else None,
         openapi_url="/openapi.json" if enable_docs else None,
+        lifespan=lifespan,
     )
 
     # ─────────── Static (core) ───────────

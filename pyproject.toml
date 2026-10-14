@@ -62,17 +62,26 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
 addopts = "-ra -q --strict-markers --timeout=120"
 asyncio_mode = "auto"
 timeout_func_only = true
 markers = [
-    "slow: медленные тесты (можно исключить через -m 'not slow')",
-    "integration: требуют запуска дочерних процессов / реального WS",
-    "webui: тесты FastAPI TestClient",
-    "contracts: проверки OpenAPI и контрактов",
+    "slow: медленные тесты",
+    "integration: требуют дочерних процессов",
+    "webui: FastAPI TestClient",
+    "contracts: OpenAPI-контракты",
     "unit: обычные unit-тесты",
+]
+filterwarnings = [
+    # FastAPI мигрирует на lifespan — заглушим до рефакторинга
+    "ignore:.*on_event is deprecated.*:DeprecationWarning",
+    # transitive deprecations из ldap3/pyasn1
+    "ignore:.*tagMap is deprecated.*:DeprecationWarning",
+    "ignore:.*typeMap is deprecated.*:DeprecationWarning",
+    # starlette testclient перейдёт на httpx2
+    "ignore::starlette.testclient.StarletteDeprecationWarning",
+    # sqlite3 datetime adapter — починим сериализацией в BaseDB
+    "ignore:The default datetime adapter is deprecated:DeprecationWarning",
 ]
 
 [tool.coverage.run]
