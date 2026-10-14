@@ -6,7 +6,6 @@
   <title>{% block title %}Homer{% endblock %}</title>
   <link rel="stylesheet" href="/static/bootstrap.min.css">
   <style>
-    body { padding-top: 1rem; }
     .stat-card { min-width: 130px; }
     pre { max-height: 500px; overflow: auto; background: #f8f9fa; padding: 1rem; }
     .badge-status { font-size: 0.85em; }
@@ -254,6 +253,7 @@
     });
 
     // Language item clicks
+        // Language item clicks
     switcher.querySelectorAll(".lang-item").forEach(function (btn) {
       btn.addEventListener("click", function (ev) {
         ev.preventDefault();
@@ -262,15 +262,17 @@
         const target = btn.getAttribute("data-lang");
         if (!target) return;
 
-        // Skip if it is somehow the current locale
         const current = document.documentElement.getAttribute("lang");
         if (target === current) {
           closeMenu();
           return;
         }
 
-        setCookie(COOKIE_NAME, target, COOKIE_MAX_AGE);
-        window.location.reload();
+        // Navigate with ?lang=... — the middleware will apply the
+        // locale on this request and set the cookie in the response.
+        const url = new URL(window.location.href);
+        url.searchParams.set("lang", target);
+        window.location.href = url.toString();
       });
     });
   }

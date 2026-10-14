@@ -1052,10 +1052,125 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
 
     @router.get("/api/editor/langs/{locale}")
     def api_langs_dict(locale: str):
+        """Flat dictionary for a locale (backward compatible)."""
         i18n = get_i18n()
         if locale not in i18n.available_locales():
             raise HTTPException(404)
         return _flatten(i18n._translations.get(locale, {}))
+
+    @router.get("/api/editor/langs/{locale}/tree")
+    def api_langs_tree(locale: str):
+        """
+        Section tree for a locale.
+
+        Sections are built from the union of:
+            - keys present in the fallback locale (even if missing here)
+            - keys present in this locale
+
+        Each section includes counts of leaves and subsections.
+        """
+        i18n = get_i18n()
+        if locale not in i18n.available_locales():
+            raise HTTPException(404)
+
+        fb = i18n._translations.get(i18n.fallback_locale, {}) or {}
+        cur = i18n._translations.get(locale, {}) or {}
+
+        fb_keys = set(_flatten(fb).keys())
+        cur_keys = set(_flatten(cur).keys())
+        all_keys = fb_keys | cur_keys
+
+        # Build set of all section paths (every prefix that has children)
+        sections: set[str] = {""}
+        for key in all_keys:
+            parts = key.split(".")
+            for i in range(1, len(parts)):
+                sections.add(".".join(parts[:i]))
+
+        # Leaf counts (direct children) per section
+        leaf_counts: dict[str, int] = {s: 0 for s in sections}
+        sub_counts: dict[str, int] = {s: 0 for s in sections}
+        for key in all_keys:
+            parent = key.rsplit(".", 1)[0] if "." in key else ""
+            leaf_counts[parent] = leaf_counts.get(parent, 0) + 1
+        for s in sections:
+            if not s:
+                continue
+            parent = s.rsplit(".", 1)[0] if "." in s else ""
+            sub_counts[parent] = sub_counts.get(parent, 0) + 1
+
+        return [
+            {
+                "path": s,
+                "name": s.rsplit(".", 1)[-1] if s else "(root)",
+                "leaves": leaf_counts.get(s, 0),
+                "subsections": sub_counts.get(s, 0),
+            }
+            for s in sorted(sections)
+        ]
+
+    @router.get("/api/editor/langs/{locale}/section")
+    def api_langs_section(locale: str, path: str = ""):
+        """
+        Leaves of a section for a locale.
+
+        Each leaf includes:
+            key       -- full dotted path
+            name      -- last segment
+            value     -- current translation (or null if missing)
+            fallback  -- fallback value (for comparison / hint)
+            layer     -- 'system' | 'project' | 'plugin' | None
+            status    -- 'ok' | 'missing' | 'same-as-fallback' | 'extra'
+        """
+        i18n = get_i18n()
+        if locale not in i18n.available_locales():
+            raise HTTPException(404)
+
+        fb_locale = i18n.fallback_locale
+        fb_flat = _flatten(i18n._translations.get(fb_locale, {}) or {})
+        cur_flat = _flatten(i18n._translations.get(locale, {}) or {})
+
+        # Leaves directly in this section (from union of fb + cur)
+        prefix = path + "." if path else ""
+        keys_in_section: set[str] = set()
+        for k in fb_flat:
+            if k.startswith(prefix) and "." not in k[len(prefix):]:
+                keys_in_section.add(k)
+        for k in cur_flat:
+            if k.startswith(prefix) and "." not in k[len(prefix):]:
+                keys_in_section.add(k)
+
+        out = []
+        for key in sorted(keys_in_section):
+            cur_val = cur_flat.get(key)
+            fb_val = fb_flat.get(key)
+            layer = None
+            try:
+                layer = i18n.key_source(locale, key)
+                if layer is None:
+                    layer = i18n.key_source(fb_locale, key)
+            except Exception:
+                layer = None
+
+            if cur_val is None and fb_val is not None:
+                status = "missing"
+            elif cur_val is not None and fb_val is not None and cur_val == fb_val:
+                status = "same-as-fallback"
+            elif cur_val is not None and fb_val is None:
+                status = "extra"
+            else:
+                status = "ok"
+
+            out.append({
+                "key": key,
+                "name": key.rsplit(".", 1)[-1],
+                "value": cur_val,
+                "fallback": fb_val,
+                "layer": layer,  # 'system' | 'project' | 'plugin' | None
+                "status": status,
+            })
+
+        return {"path": path, "entries": out}
 
     @router.put("/api/editor/langs/{locale}")
     def api_langs_update(locale: str, req: LangSetReq,
@@ -1083,7 +1198,7 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 action="langs-update",
                 before=before_content,
                 after=target_file.read_text(encoding="utf-8")
-                       if target_file.exists() else None,
+                if target_file.exists() else None,
                 source=f"langs:{locale}.yml",
             )
         except Exception:
@@ -1139,7 +1254,7 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 action="langs-sync",
                 before=before_content,
                 after=target_file.read_text(encoding="utf-8")
-                       if target_file.exists() else None,
+                if target_file.exists() else None,
                 source=f"langs:{locale}.yml",
             )
         except Exception:
