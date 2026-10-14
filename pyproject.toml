@@ -37,7 +37,7 @@ postgres = ["psycopg2-binary>=2.9.13"]
 mysql = ["PyMySQL>=1.1.0"]
 mssql = ["pyodbc>=4.0.0", "pymssql>=2.3.0"]
 clickhouse = ["clickhouse-driver>=0.2.6", "clickhouse-connect>=0.7.0"]
-redis = ["redis>=5.0.0"]
+redis = ["redis>=8.1.0"]
 mongo = ["pymongo>=4.18.2"]
 database = [
     "cx_Oracle>=8.3.0",
@@ -47,7 +47,7 @@ database = [
     "pymssql>=2.3.0",
     "clickhouse-driver>=0.2.6",
     "clickhouse-connect>=0.7.0",
-    "redis>=5.0.0",
+    "redis>=8.1.0",
     "pymongo>=4.18.2",
 ]
 webui = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "pydantic>=2.6"]
