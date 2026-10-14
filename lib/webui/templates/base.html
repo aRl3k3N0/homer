@@ -162,24 +162,20 @@
       <a class="nav-link" href="/docs" target="_blank" rel="noopener">
         {{ _('webui.nav.api') }}
       </a>
-
-      {# Language dropdown: current locale + list of others (custom JS) #}
-      <div class="nav-item lang-switch align-self-center" id="lang-switch">
-        <button type="button" class="lang-toggle" aria-haspopup="true"
-                aria-expanded="false">
-          {{ locale|upper }}
-        </button>
-        <ul class="lang-menu" role="menu">
-          {% for l in available_locales() %}
-            {% if l != locale %}
-              <li role="none">
-                <button type="button"
-                        class="lang-item"
-                        role="menuitem"
-                        data-lang="{{ l }}">{{ l|upper }}</button>
-              </li>
-            {% endif %}
-          {% endfor %}
+{% if user %}
+  <div class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+      {{ user.username }}
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end">
+      <li><a class="dropdown-item" href="/profile">{{ _('webui.nav.profile') }}</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li><a class="dropdown-item" href="/logout">{{ _('webui.nav.logout') }}</a></li>
+    </ul>
+  </div>
+{% else %}
+  <a class="nav-link" href="/login">{{ _('webui.nav.login') }}</a>
+{% endif %}
         </ul>
       </div>
     </div>

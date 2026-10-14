@@ -22,6 +22,7 @@ DDL = {
             username      TEXT UNIQUE NOT NULL,
             display_name  TEXT,
             email         TEXT,
+            locale        TEXT,
             password_hash TEXT,
             provider      TEXT NOT NULL DEFAULT 'local',
             enabled       INTEGER NOT NULL DEFAULT 1,
@@ -57,6 +58,7 @@ DDL = {
             username      VARCHAR(255) UNIQUE NOT NULL,
             display_name  VARCHAR(255),
             email         VARCHAR(255),
+            locale        VARCHAR(16),
             password_hash VARCHAR(255),
             provider      VARCHAR(32) NOT NULL DEFAULT 'local',
             enabled       BOOLEAN NOT NULL DEFAULT TRUE,
@@ -94,6 +96,7 @@ DDL = {
                     username      VARCHAR2(255) UNIQUE NOT NULL,
                     display_name  VARCHAR2(255),
                     email         VARCHAR2(255),
+                    locale        VARCHAR2(16),
                     password_hash VARCHAR2(255),
                     provider      VARCHAR2(32) DEFAULT ''local'' NOT NULL,
                     enabled       NUMBER(1) DEFAULT 1 NOT NULL,
@@ -183,6 +186,7 @@ class User:
     username: str
     display_name: str = ''
     email: str = ''
+    locale: Optional[str] = None
     provider: str = 'local'
     enabled: bool = True
     roles: list[str] = field(default_factory=list)
@@ -335,19 +339,21 @@ class AuthStore:
         return [self._row_to_user(r) for r in rows]
 
     def create_user(self, username: str, password: str | None = None,
-                    *, display_name: str = '', email: str = '',
-                    provider: str = 'local') -> int:
+                    *, display_name: str = "", email: str = "",
+                    provider: str = "local",
+                    locale: Optional[str] = None) -> int:
         now = datetime.now()
         pw_hash = hash_password(password) if password else None
         sql = (
             f"INSERT INTO homer_users "
-            f"(username, display_name, email, password_hash, provider, "
+            f"(username, display_name, email, locale, password_hash, provider, "
             f" enabled, created_at) "
             f"VALUES ({self._ph(0)}, {self._ph(1)}, {self._ph(2)}, "
-            f"{self._ph(3)}, {self._ph(4)}, {self._ph(5)}, {self._ph(6)})"
+            f"{self._ph(3)}, {self._ph(4)}, {self._ph(5)}, {self._ph(6)}, "
+            f"{self._ph(7)})"
         )
         self.db.execute(sql, [
-            username, display_name, email, pw_hash, provider,
+            username, display_name, email, locale, pw_hash, provider,
             self._bool(True), now,
         ])
         self.db.commit()
@@ -460,6 +466,7 @@ class AuthStore:
             username=row['username'],
             display_name=row.get('display_name') or '',
             email=row.get('email') or '',
+            locale=row.get("locale") or None,
             provider=row.get('provider') or 'local',
             enabled=bool(row.get('enabled', True)),
             roles=roles,
@@ -687,20 +694,39 @@ class AuthStore:
         if not self._external_db:
             self.db.close()
 
+    def set_user_locale(self, username: str, locale: Optional[str]) -> bool:
+        """
+        Set user's preferred locale (or clear it with None).
+        Returns True if the user existed.
+        """
+        user = self.get_user_by_name(username)
+        if not user:
+            return False
+        self.db.execute(
+            f"UPDATE homer_users SET locale = {self._ph(0)}, "
+            f"updated_at = {self._ph(1)} WHERE id = {self._ph(2)}",
+            [locale, datetime.now(), user.id],
+        )
+        self.db.commit()
+        return True
+
     def update_user(self, username: str, *,
                     display_name: Optional[str] = None,
                     email: Optional[str] = None,
                     enabled: Optional[bool] = None,
-                    password: Optional[str] = None) -> bool:
+                    password: Optional[str] = None,
+                    locale: Optional[str] = None) -> bool:
         """
         Update a user. Only non-None fields are touched.
-        Returns True if the user existed and was updated.
+
+        Note: `locale=None` means "do not change". To explicitly clear
+        the locale, use set_user_locale(username, None).
         """
         user = self.get_user_by_name(username)
         if not user:
             return False
 
-        fields = []
+        fields: list[str] = []
         params: list[Any] = []
 
         def _set(col: str, val: Any):
@@ -715,15 +741,20 @@ class AuthStore:
             _set("enabled", self._bool(enabled))
         if password:
             _set("password_hash", hash_password(password))
+        if locale is not None:
+            _set("locale", locale)
 
         if not fields:
-            return True  # nothing to change
+            return True
 
         fields.append(f"updated_at = {self._ph(len(params))}")
         params.append(datetime.now())
 
         params.append(user.id)
-        sql = f"UPDATE homer_users SET {', '.join(fields)} WHERE id = {self._ph(len(params) - 1)}"
+        sql = (
+            f"UPDATE homer_users SET {', '.join(fields)} "
+            f"WHERE id = {self._ph(len(params) - 1)}"
+        )
         self.db.execute(sql, params)
         self.db.commit()
         return True
@@ -760,3 +791,5 @@ class AuthStore:
         if not row:
             return 0
         return int(row.get("cnt") or 0) if isinstance(row, dict) else int(row[0] or 0)
+
+

@@ -34,6 +34,7 @@ from lib.webui.routers import (
     pages,
     system,
     ws,
+    profile
 )
 from lib.webui.templating import CORE_TEMPLATES_DIR, build_templates
 from lib.webui.ws import get_hub
@@ -174,6 +175,10 @@ def create_app(config, root_dir=None, auth=None, enable_docs=True, logger=None):
         editor.build_router(state, deps, templates),
         dependencies=[Depends(bind_locale)],
     )
+    app.include_router(
+        profile.build_router(state, deps, templates),
+        dependencies=[Depends(bind_locale)],
+    )
 
     # WebSocket router: no bind_locale (no templates rendered here)
     app.include_router(ws.build_router(state))
@@ -191,22 +196,29 @@ def create_app(config, root_dir=None, auth=None, enable_docs=True, logger=None):
     async def i18n_middleware(request: Request, call_next):
         i18n = get_i18n()
 
-        # Priority: query (?lang) > cookie > Accept-Language > default
-        locale = (
-            request.query_params.get("lang")
-            or request.cookies.get("homer_locale")
-            or _parse_accept_language(request.headers.get("accept-language", ""))
-            or i18n.default_locale
-        )
+        # 1) user.locale (set by auth_state_middleware)
+        user = getattr(request.state, "user", None)
+        locale = None
+        if user is not None and getattr(user, "locale", None):
+            locale = user.locale
+
+        # 2) Accept-Language (anonymous fallback)
+        if not locale:
+            locale = _parse_accept_language(
+                request.headers.get("accept-language", "")
+            )
+
+        # 3) default from config
+        if not locale or locale not in i18n.available_locales():
+            locale = i18n.default_locale
+
         if locale not in i18n.available_locales():
             locale = i18n.fallback_locale
 
         request.state.locale = locale
         response = await call_next(request)
-        response.set_cookie(
-            "homer_locale", locale,
-            max_age=365 * 86400, httponly=False, samesite="lax",
-        )
+
+        # No Set-Cookie: locale is stored in the user profile, not in a cookie.
         return response
 
     @app.middleware("http")

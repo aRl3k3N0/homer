@@ -23,6 +23,20 @@ webui:
     login:    "Вход"
     api:      "API"
     editor: "Редактор"
+    profile: "Профиль"
+
+  profile:
+    title: "Профиль"
+    username: "Имя пользователя"
+    display_name: "Отображаемое имя"
+    email: "Email"
+    locale: "Язык интерфейса"
+    locale_default: "По умолчанию"
+    locale_hint: "Выбранный язык применяется ко всем страницам Homer."
+    change_password: "Смена пароля"
+    current_password: "Текущий пароль"
+    new_password: "Новый пароль"
+    new_password_hint: "Оставьте пустым, если не хотите менять пароль."
 
   editor:
     config: "Конфигурация"
