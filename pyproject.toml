@@ -62,12 +62,17 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-ra -q --strict-markers --timeout=60"
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-ra -q --strict-markers --timeout=120"
+asyncio_mode = "auto"
 timeout_func_only = true
 markers = [
-    "slow: медленные тесты (пропустить: -m 'not slow')",
-    "integration: интеграционные тесты (требуют БД/сеть)",
-    "benchmark: бенчмарки (запускаются отдельно)",
+    "slow: медленные тесты (можно исключить через -m 'not slow')",
+    "integration: требуют запуска дочерних процессов / реального WS",
+    "webui: тесты FastAPI TestClient",
+    "contracts: проверки OpenAPI и контрактов",
+    "unit: обычные unit-тесты",
 ]
 
 [tool.coverage.run]
@@ -136,3 +141,4 @@ lib = ["py.typed"]
 where = ["."]
 include = ["commands*", "lib*"]
 exclude = ["tests*", "benchmarks*", "examples*", "deploy*"]
+

@@ -69,6 +69,30 @@ help:
 	@echo "  make run                — homer (список команд)"
 	@echo "  make shell              — homer shell"
 
+PYTEST ?= $(PY) -m pytest
+
+test-all:
+	$(PYTEST) tests/ -v
+
+test-unit:
+	$(PYTEST) tests/ -v -m "not integration and not webui and not contracts"
+
+test-integration:
+	$(PYTEST) tests/integration/ -v -m "integration"
+
+test-webui:
+	$(PYTEST) tests/webui/ -v -m "webui"
+
+test-contracts:
+	$(PYTEST) tests/contracts/ -v -m "contracts"
+
+test-cov-all:
+	$(PYTEST) tests/ \
+		--cov=lib \
+		--cov-report=term-missing \
+		--cov-report=html:htmlcov \
+		--cov-fail-under=40
+
 bootstrap:
 	@./$(SCRIPTS)/bootstrap.sh
 

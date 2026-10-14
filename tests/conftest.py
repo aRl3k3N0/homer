@@ -1,84 +1,40 @@
 """
-Общие фикстуры для тестов Homer.
+Root-level pytest fixtures for Homer.
 """
-
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 
-# Добавляем корень проекта в sys.path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-
-@pytest.fixture
-def tmp_config(tmp_path):
-    """Временный config.yml с sqlite-хранилищем."""
-    from lib.config import Config
-
-    cfg_path = tmp_path / 'config.yml'
-    cfg_path.write_text(
-        f"""
-app:
-  name: HomerTest
-  version: 0.0.1
-
-logging:
-  level: CRITICAL
-  console: false
-
-scheduler:
-  storage: sqlite
-  sqlite:
-    path: {tmp_path / 'scheduler.db'}
-  lease_seconds: 60
-  heartbeat_interval: 5
-  max_workers: 2
-
-notifications:
-  enabled: []
-""",
-        encoding='utf-8',
-    )
-    return Config(cfg_path)
+from tests._helpers.cli_runner import make_cli_runner, CLIRunner  # noqa: E402
 
 
 @pytest.fixture
-def sqlite_storage(tmp_config):
-    """Свежий QueueStorage на временной SQLite."""
-    from lib.queue import QueueStorage
-
-    storage = QueueStorage(tmp_config)
-    yield storage
-    storage.close()
-
-
-@pytest.fixture
-def sqlite_scheduler_storage(tmp_config):
-    """Свежий DBStorage для cron-задач."""
-    from lib.scheduler import create_storage
-
-    storage = create_storage(tmp_config)
-    yield storage
-    storage.close()
+def cli_runner(tmp_path) -> CLIRunner:
+    """
+    Isolated project + `homer` CLI runner.
+    Usage:
+        r = cli_runner("cluster:status")
+        assert r.ok()
+    """
+    return make_cli_runner(tmp_path)
 
 
 @pytest.fixture
-def sample_command_dir(tmp_path):
-    """Папка с готовой командой hello для CommandLoader."""
-    commands = tmp_path / 'commands'
-    commands.mkdir()
-    (commands / '__init__.py').write_text('', encoding='utf-8')
-    (commands / 'hello.py').write_text(
-        'DESCRIPTION = "Привет"\ndef execute(context):\n    return 0\n',
-        encoding='utf-8',
-    )
-    sub = commands / 'report'
-    sub.mkdir()
-    (sub / '__init__.py').write_text('', encoding='utf-8')
-    (sub / 'daily.py').write_text(
-        'DESCRIPTION = "Ежедневно"\ndef execute(context):\n    return 0\n',
-        encoding='utf-8',
-    )
-    return commands
+def cli_runner_factory(tmp_path):
+    """
+    Factory for multiple projects in the same test.
+    """
+    created = []
+
+    def _make(name: str = "proj", **kwargs) -> CLIRunner:
+        d = tmp_path / name
+        d.mkdir(parents=True, exist_ok=True)
+        runner = make_cli_runner(d, **kwargs)
+        created.append(runner)
+        return runner
+
+    return _make
