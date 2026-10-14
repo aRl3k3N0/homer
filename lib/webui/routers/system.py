@@ -34,4 +34,23 @@ def build_router(state: WebUIState) -> APIRouter:
         body, ctype = metrics_endpoint()
         return Response(content=body, media_type=ctype)
 
+    @router.get("/api/diagnostics")
+    def api_diagnostics():
+        """
+        Public diagnostics endpoint, callable by other nodes.
+        Not HTML, not protected by auth (assumes internal network).
+        If you want to protect it, use cluster.ws_token as a Bearer token.
+        """
+        from lib.cluster.diagnostics import collect_diagnostics
+        from lib.cluster.ws_server import get_hub
+
+        return collect_diagnostics(
+            state.config,
+            state.config.paths,
+            logger=state.logger,
+            node_registry=getattr(state, "node_registry", None),
+            cluster_files=getattr(state, "cluster_files", None),
+            ws_hub=get_hub(),
+        )
+
     return router

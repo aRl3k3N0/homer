@@ -27,6 +27,7 @@ from . import registry
 from . import config_cache
 from . import i18n_cache
 from . import paths_info
+from . import zabbix
 
 
 BUILTIN_COMMANDS = {
@@ -434,6 +435,16 @@ BUILTIN_COMMANDS = {
     "paths:info": {
         "execute": paths_info.execute,
         "description": paths_info.DESCRIPTION,
+        "source": "builtin",
+    },
+"zabbix:discover": {
+        "execute": zabbix.discover,
+        "description": zabbix.DESCRIPTIONS["discover"],
+        "source": "builtin",
+    },
+    "zabbix:metric": {
+        "execute": zabbix.metric,
+        "description": zabbix.DESCRIPTIONS["metric"],
         "source": "builtin",
     },
 }

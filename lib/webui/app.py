@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 from lib.i18n import get_i18n
 from lib.webui.deps import Dependencies, WebUIState, bind_locale
+from lib.webui.routers import admin_nodes as admin_nodes_router
 from lib.webui.routers import (
     admin_users,
     api_history,
@@ -34,6 +35,7 @@ from lib.webui.routers import (
     pages,
     system,
     ws,
+    cluster_ws,
     profile
 )
 from lib.webui.templating import CORE_TEMPLATES_DIR, build_templates
@@ -139,6 +141,8 @@ def create_app(config, root_dir=None, auth=None, enable_docs=True, logger=None):
     if getattr(config, "cluster_files", None) is not None \
             and getattr(state, "cluster_files", None) is None:
         state.cluster_files = config.cluster_files
+    if getattr(config, "node_registry", None) is not None:
+        state.node_registry = config.node_registry
 
     deps = Dependencies(state)
 
@@ -175,8 +179,13 @@ def create_app(config, root_dir=None, auth=None, enable_docs=True, logger=None):
         editor.build_router(state, deps, templates),
         dependencies=[Depends(bind_locale)],
     )
+    app.include_router(cluster_ws.build_router(state))
     app.include_router(
         profile.build_router(state, deps, templates),
+        dependencies=[Depends(bind_locale)],
+    )
+    app.include_router(
+        admin_nodes_router.build_router(state, deps, templates),
         dependencies=[Depends(bind_locale)],
     )
 

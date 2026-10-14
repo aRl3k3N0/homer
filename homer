@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.absolute()
 sys.path.insert(0, str(ROOT_DIR))
 
+import asyncio
 from lib.cluster.nodes import NodeRegistry
 from lib.cluster.files import ClusterFiles
 from lib.arguments import ArgumentParser, extract_globals
@@ -31,6 +33,31 @@ from lib.i18n.manager import Layer
 from lib.logger import Logger
 from lib.registry_cache import RegistryCache
 
+def _start_cluster_client(config, cluster_files):
+    if not config.get("cluster.enabled", False):
+        return None
+    if config.get("cluster.role", "worker") == "primary":
+        return None  # primary не подключается сам к себе
+
+    url = config.get("cluster.primary_ws_url")
+    if not url:
+        return None
+    token = config.get("cluster.ws_token")
+
+    from lib.cluster.ws_client import ClusterClient
+    client = ClusterClient(url, cluster_files, token)
+
+    def run():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(client.run())
+        finally:
+            loop.close()
+
+    t = threading.Thread(target=run, daemon=True, name="homer-cluster-ws")
+    t.start()
+    return t
 
 def build_context(config, logger, args, command_name, commands,
                   loader=None, paths=None):
@@ -129,7 +156,6 @@ def main() -> int:
         ttl_seconds=int(config.get("cluster.ttl_seconds", 60)),
     )
     node_registry.register()
-    node_registry.start_heartbeat()
 
     cluster_files = None
     if config.get("cluster.enabled", False):

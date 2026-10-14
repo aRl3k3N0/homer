@@ -47,13 +47,14 @@ History API:
 Translations API:
     GET    /api/editor/langs                   -- list locales
     GET    /api/editor/langs/{locale}          -- flat dictionary
+    GET    /api/editor/langs/{locale}/tree     -- section tree
+    GET    /api/editor/langs/{locale}/section  -- leaves of a section
     PUT    /api/editor/langs/{locale}          -- apply updates
     POST   /api/editor/langs/{locale}/sync     -- copy missing from fallback
 
 IMPORTANT: route declaration order matters. Specific literal paths
 (e.g. /tree, /section, /value, /rename) MUST come BEFORE the greedy
-`{key_path:path}` routes, otherwise FastAPI will match "tree" as a
-key name and return 404.
+`{key_path:path}` routes.
 """
 
 from __future__ import annotations
@@ -61,6 +62,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -78,6 +80,7 @@ from lib.auth import (
     PERM_EDITOR_TEMPLATES,
     PERM_EDITOR_STATIC,
 )
+from lib.cluster.ws_server import publish_change          # ← new
 from lib.editor.config_registry import ConfigRegistry, ConfigRegistryError
 from lib.editor.files import (
     FileEditor, EditorError, PermissionDenied, ConflictError,
@@ -179,14 +182,6 @@ class ConfigImportReq(BaseModel):
 # ═══════════════════════════════════════════════════════════════
 
 def _get_cluster_files(state: WebUIState):
-    """
-    Return ClusterFiles instance or None.
-
-    Preference order:
-        1. state.cluster_files           (set by app.py when cluster enabled)
-        2. config.cluster_files          (set by homer entrypoint)
-        3. None                          (standalone mode)
-    """
     cf = getattr(state, "cluster_files", None)
     if cf is not None:
         return cf
@@ -197,23 +192,6 @@ def _get_cluster_files(state: WebUIState):
 
 
 def _check_key_perm(state: WebUIState, user, key_path: str) -> None:
-    """
-    Raise 403 if the user is not allowed to edit this config key.
-
-    Rules come from config.yml:
-
-        webui:
-          editor:
-            config:
-              key_permissions:
-                - pattern: "^databases\\..*"
-                  roles: [dba, admin]
-                - pattern: "^.*"
-                  roles: [admin, developer]
-
-    The first matching pattern wins. If no rule matches, only users
-    with 'admin' role are allowed.
-    """
     rules = state.config.get("webui.editor.config.key_permissions") or []
     user_roles = set(getattr(user, "roles", []) or [])
 
@@ -274,10 +252,6 @@ def _delete_path(doc: dict, path: str) -> None:
 
 def _apply_lang_updates(target_file: Path,
                         updates: dict[str, Optional[str]]) -> None:
-    """
-    Apply dot-separated updates to a YAML file, preserving comments
-    and key order when ruamel.yaml is installed.
-    """
     try:
         from ruamel.yaml import YAML
         y = YAML()
@@ -319,19 +293,16 @@ def _apply_lang_updates(target_file: Path,
 def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
     router = APIRouter()
 
-    # ─── Resolve paths ───
     paths = getattr(state.config, "paths", None)
     if paths is None:
         from lib.paths import Paths
         paths = Paths.from_config(state.config, state.root_dir / "config.yml")
 
-    # ─── Editor components ───
     editor = FileEditor(paths)
     registry = ConfigRegistry(state.config, paths)
     locks = LockStore(state.config)
     history = EditorHistory(state.config)
     cluster_files = _get_cluster_files(state)
-
     cluster_enabled = cluster_files is not None
 
     # ═══════════════════════════════════════════════════════════
@@ -408,22 +379,13 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
     # ═══════════════════════════════════════════════════════════
     #   Config registry API
     # ═══════════════════════════════════════════════════════════
-    #
-    # ORDER MATTERS. Specific literal paths (/tree, /section, /value,
-    # /rename, /export, /import) MUST be declared BEFORE the greedy
-    # {key_path:path} routes. Otherwise FastAPI will match /tree as
-    # key_path="tree" and return 404 "Key not found".
 
     # ─── 1) Tree ───
 
     @router.get("/api/editor/config/tree",
                 dependencies=[Depends(deps.require_perm(PERM_EDITOR_CONFIG))])
     def api_config_tree():
-        """
-        Sections of the merged config plus leaf/subsection counts.
-        Leaves themselves are not returned here; use /section.
-        """
-        sections = registry.list_sections()          # includes ''
+        sections = registry.list_sections()
         leaf_counts = {s: len(registry.list_leaves_of(s)) for s in sections}
 
         sub_counts: dict[str, int] = {s: 0 for s in sections}
@@ -498,6 +460,14 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
             registry.create_section(req.path)
         except ConfigRegistryError as e:
             raise HTTPException(409, str(e))
+
+        # notify cluster
+        publish_change({
+            "type": "config.section.created",
+            "path": req.path,
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
         return {"created": req.path}
 
     @router.delete("/api/editor/config/section",
@@ -509,6 +479,14 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
             registry.delete_section(path)
         except ConfigRegistryError as e:
             raise HTTPException(409, str(e))
+
+        # notify cluster
+        publish_change({
+            "type": "config.section.deleted",
+            "path": path,
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
         return {"deleted": path}
 
     # ─── 4) Values ───
@@ -522,6 +500,14 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
             entry = registry.create_value(req.path, req.value)
         except ConfigRegistryError as e:
             raise HTTPException(409, str(e))
+
+        # notify cluster
+        publish_change({
+            "type": "config.value.created",
+            "path": entry.path,
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
         return {"path": entry.path, "value": entry.value, "type": entry.type}
 
     # ─── 5) Rename ───
@@ -536,6 +522,15 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
             registry.rename(req.old_path, req.new_path)
         except ConfigRegistryError as e:
             raise HTTPException(409, str(e))
+
+        # notify cluster
+        publish_change({
+            "type": "config.renamed",
+            "old_path": req.old_path,
+            "new_path": req.new_path,
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
         return {"old": req.old_path, "new": req.new_path}
 
     # ─── 6) Greedy per-key routes (MUST BE LAST) ───
@@ -588,16 +583,27 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         except Exception:
             pass
 
+        # ─── cluster sync via DB
         if cluster_enabled and entry.source:
             try:
                 cluster_files.write(
                     category="config",
                     rel_path=entry.source,
-                    content=Path(paths.base / entry.source).read_text(encoding="utf-8"),
+                    content=Path(paths.base / entry.source)
+                            .read_text(encoding="utf-8"),
                     author=user.username,
                 )
             except Exception:
                 pass
+
+        # ─── cluster live notify (WS)
+        publish_change({
+            "type": "config.changed",
+            "path": key_path,
+            "value": entry.value,
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
 
         return {
             "path": entry.path,
@@ -643,11 +649,20 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 cluster_files.write(
                     category="config",
                     rel_path=before.source,
-                    content=Path(paths.base / before.source).read_text(encoding="utf-8"),
+                    content=Path(paths.base / before.source)
+                            .read_text(encoding="utf-8"),
                     author=user.username,
                 )
             except Exception:
                 pass
+
+        # notify cluster
+        publish_change({
+            "type": "config.deleted",
+            "path": key_path,
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
 
         return {"deleted": key_path}
 
@@ -754,6 +769,15 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         except Exception:
             pass
 
+        # notify cluster
+        publish_change({
+            "type": "file.changed",
+            "category": category,
+            "path": req.path,
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
+
         return {
             "path": info.path,
             "checksum": info.checksum,
@@ -811,6 +835,15 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
             )
         except Exception:
             pass
+
+        # notify cluster
+        publish_change({
+            "type": "file.deleted",
+            "category": category,
+            "path": req.path,
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
 
         return {"deleted": req.path, "cluster": cluster_enabled}
 
@@ -1035,6 +1068,17 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
             after=e.before,
             source=e.source,
         )
+
+        # notify cluster
+        publish_change({
+            "type": "history.rollback",
+            "entry_id": entry_id,
+            "target": e.target,
+            "category": e.category,
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
+
         return {"rolled_back": entry_id}
 
     # ═══════════════════════════════════════════════════════════
@@ -1052,7 +1096,6 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
 
     @router.get("/api/editor/langs/{locale}")
     def api_langs_dict(locale: str):
-        """Flat dictionary for a locale (backward compatible)."""
         i18n = get_i18n()
         if locale not in i18n.available_locales():
             raise HTTPException(404)
@@ -1060,15 +1103,6 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
 
     @router.get("/api/editor/langs/{locale}/tree")
     def api_langs_tree(locale: str):
-        """
-        Section tree for a locale.
-
-        Sections are built from the union of:
-            - keys present in the fallback locale (even if missing here)
-            - keys present in this locale
-
-        Each section includes counts of leaves and subsections.
-        """
         i18n = get_i18n()
         if locale not in i18n.available_locales():
             raise HTTPException(404)
@@ -1080,14 +1114,12 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         cur_keys = set(_flatten(cur).keys())
         all_keys = fb_keys | cur_keys
 
-        # Build set of all section paths (every prefix that has children)
         sections: set[str] = {""}
         for key in all_keys:
             parts = key.split(".")
             for i in range(1, len(parts)):
                 sections.add(".".join(parts[:i]))
 
-        # Leaf counts (direct children) per section
         leaf_counts: dict[str, int] = {s: 0 for s in sections}
         sub_counts: dict[str, int] = {s: 0 for s in sections}
         for key in all_keys:
@@ -1111,17 +1143,6 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
 
     @router.get("/api/editor/langs/{locale}/section")
     def api_langs_section(locale: str, path: str = ""):
-        """
-        Leaves of a section for a locale.
-
-        Each leaf includes:
-            key       -- full dotted path
-            name      -- last segment
-            value     -- current translation (or null if missing)
-            fallback  -- fallback value (for comparison / hint)
-            layer     -- 'system' | 'project' | 'plugin' | None
-            status    -- 'ok' | 'missing' | 'same-as-fallback' | 'extra'
-        """
         i18n = get_i18n()
         if locale not in i18n.available_locales():
             raise HTTPException(404)
@@ -1130,7 +1151,6 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
         fb_flat = _flatten(i18n._translations.get(fb_locale, {}) or {})
         cur_flat = _flatten(i18n._translations.get(locale, {}) or {})
 
-        # Leaves directly in this section (from union of fb + cur)
         prefix = path + "." if path else ""
         keys_in_section: set[str] = set()
         for k in fb_flat:
@@ -1166,7 +1186,7 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 "name": key.rsplit(".", 1)[-1],
                 "value": cur_val,
                 "fallback": fb_val,
-                "layer": layer,  # 'system' | 'project' | 'plugin' | None
+                "layer": layer,
                 "status": status,
             })
 
@@ -1198,7 +1218,7 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 action="langs-update",
                 before=before_content,
                 after=target_file.read_text(encoding="utf-8")
-                if target_file.exists() else None,
+                       if target_file.exists() else None,
                 source=f"langs:{locale}.yml",
             )
         except Exception:
@@ -1214,6 +1234,15 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 )
             except Exception:
                 pass
+
+        # notify cluster
+        publish_change({
+            "type": "langs.changed",
+            "locale": locale,
+            "keys": list(req.updates.keys()),
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
 
         return {"updated": list(req.updates.keys()), "cluster": cluster_enabled}
 
@@ -1254,7 +1283,7 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 action="langs-sync",
                 before=before_content,
                 after=target_file.read_text(encoding="utf-8")
-                if target_file.exists() else None,
+                       if target_file.exists() else None,
                 source=f"langs:{locale}.yml",
             )
         except Exception:
@@ -1270,6 +1299,15 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 )
             except Exception:
                 pass
+
+        # notify cluster
+        publish_change({
+            "type": "langs.synced",
+            "locale": locale,
+            "count": len(missing),
+            "author": user.username,
+            "ts": datetime.now().isoformat(),
+        })
 
         return {"synced": len(missing), "cluster": cluster_enabled}
 

@@ -180,6 +180,38 @@ class MetricsRegistry:
             ['locale'],
             registry=self.registry,
         )
+        self.cluster_nodes = Gauge(
+            'homer_cluster_nodes_total',
+            'Number of cluster nodes by role',
+            ['role'],
+            registry=self.registry,
+        )
+        self.cluster_ws_subscribers = Gauge(
+            'homer_cluster_ws_subscribers',
+            'Connected cluster WebSocket subscribers',
+            registry=self.registry,
+        )
+        self.cluster_role = Gauge(
+            'homer_cluster_role',
+            'This node role (1 if matches, else 0)',
+            ['role'],
+            registry=self.registry,
+        )
+        self.cluster_files_total = Gauge(
+            'homer_cluster_files_total',
+            'Number of files tracked in cluster storage',
+            registry=self.registry,
+        )
+        self.cluster_changes_total = Counter(
+            'homer_cluster_changes_total',
+            'Total change records observed',
+            registry=self.registry,
+        )
+        self.cluster_election_role_changes = Counter(
+            'homer_cluster_election_role_changes_total',
+            'Number of times role changed via election',
+            registry=self.registry,
+        )
 
 
 _REGISTRY: MetricsRegistry | None = None

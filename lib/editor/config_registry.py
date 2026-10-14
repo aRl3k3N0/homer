@@ -33,6 +33,14 @@ class ConfigRegistryError(Exception):
     pass
 
 
+def _path_to_patch(key_path: str, value: Any) -> dict:
+    """{'a.b.c': v} -> {'a': {'b': {'c': v}}}"""
+    parts = key_path.split(".")
+    patch: Any = value
+    for part in reversed(parts):
+        patch = {part: patch}
+    return patch
+
 @dataclass
 class ConfigEntry:
     path: str
@@ -137,7 +145,8 @@ class ConfigRegistry:
 
     # ─────────── Mutations ───────────
 
-    def set(self, key_path: str, value: Any, *, expected_value: Any = None):
+    def set(self, key_path: str, value: Any, *,
+            expected_value: Any = None):
         merged = self.config.all()
         current = self._get_by_path(merged, key_path)
         if current is _MISSING:
@@ -147,9 +156,18 @@ class ConfigRegistry:
                 f"Value changed since you opened it "
                 f"(was {current!r}, expected {expected_value!r})"
             )
+
+        # Choose the source file
         source = self._find_source(key_path) or self.config_path
+
+        # Build a patch for this one key
+        patch = _path_to_patch(key_path, value)
+
+        # Re-read file *right before writing* to avoid clobbering
+        # concurrent edits
         doc = self._load_doc(source)
-        self._set_by_path(doc, key_path, value)
+        from lib.cluster.merge_patch import merge_patch
+        doc = merge_patch(doc, patch)
         self._save_doc(source, doc)
         self.config.reload()
         return self.get(key_path)
@@ -336,6 +354,5 @@ class ConfigRegistry:
                     self._walk_source(v, key, out, src)
                 else:
                     out.setdefault(key, src)
-
 
 _MISSING = object()
