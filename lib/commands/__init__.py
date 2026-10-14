@@ -28,7 +28,7 @@ from . import config_cache
 from . import i18n_cache
 from . import paths_info
 from . import zabbix
-
+from . import cluster
 
 BUILTIN_COMMANDS = {
     'shell': {
@@ -447,4 +447,24 @@ BUILTIN_COMMANDS = {
         "description": zabbix.DESCRIPTIONS["metric"],
         "source": "builtin",
     },
+"cluster:status": {
+        "execute": cluster.status,
+        "description": cluster.DESCRIPTIONS["status"],
+        "source": "builtin",
+    },
+    "cluster:gc": {
+        "execute": cluster.gc,
+        "description": cluster.DESCRIPTIONS["gc"],
+        "source": "builtin",
+    },
+"cluster:describe": {
+    "execute": cluster.describe,
+    "description": cluster.DESCRIPTIONS["describe"],
+    "source": "builtin",
+},
+"cluster:join": {
+    "execute": cluster.join,
+    "description": cluster.DESCRIPTIONS["join"],
+    "source": "builtin",
+},
 }

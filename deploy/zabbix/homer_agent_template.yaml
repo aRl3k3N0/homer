@@ -1,0 +1,135 @@
+zabbix_export:
+  version: '6.4'
+  template_groups:
+    - uuid: a1e7b0d6c3f04b71b3e9b4f7a6c8d2e1
+      name: Templates/Applications
+
+  templates:
+    - uuid: b1e7b0d6c3f04b71b3e9b4f7a6c8d2e2
+      template: 'Homer by Zabbix agent'
+      name: 'Homer by Zabbix agent'
+      description: |
+        Homer node monitoring via local Zabbix agent.
+
+        Requirements on the agent side:
+
+            UserParameter=homer.discover,/opt/homer/homer zabbix:discover
+            UserParameter=homer.metric[*],/opt/homer/homer zabbix:metric "$1"
+
+        Provides LLD discovery of all metrics exposed by
+        `homer zabbix:metric <key>` and a set of built-in triggers.
+      groups:
+        - name: Templates/Applications
+      items:
+        - uuid: c1e7b0d6c3f04b71b3e9b4f7a6c8d2e3
+          name: 'Homer: discovery'
+          type: ZABBIX_PASSIVE
+          key: 'homer.discover'
+          delay: 1h
+          history: 1d
+          trends: '0'
+          description: 'LLD discovery of all available metrics.'
+          preprocessing:
+            - type: JSONPATH
+              parameters:
+                - '$.data'
+          applications:
+            - 'Homer'
+
+      discovery_rules:
+        - uuid: d1e7b0d6c3f04b71b3e9b4f7a6c8d2e4
+          name: 'Homer: metrics'
+          type: ZABBIX_PASSIVE
+          key: 'homer.discover'
+          delay: 1h
+          lifetime: 30d
+          description: 'Discover individual metrics from homer.discover.'
+          item_prototypes:
+            - uuid: e1e7b0d6c3f04b71b3e9b4f7a6c8d2e5
+              name: 'Homer metric: {#HOMER_METRIC}'
+              type: ZABBIX_PASSIVE
+              key: 'homer.metric[{#HOMER_METRIC}]'
+              delay: 60s
+              history: 7d
+              trends: 90d
+              value_type: UNSIGNED
+              description: 'Homer metric {#HOMER_METRIC}.'
+              applications:
+                - 'Homer'
+              preprocessing:
+                - type: DISCARD_UNCHANGED_HEARTBEAT
+                  parameters:
+                    - '1h'
+              tags:
+                - tag: component
+                  value: homer
+                - tag: metric
+                  value: '{#HOMER_METRIC}'
+
+          trigger_prototypes:
+            # ─── Queue pending too high ───
+            - uuid: f1e7b0d6c3f04b71b3e9b4f7a6c8d2e6
+              expression: 'last(/Homer by Zabbix agent/homer.metric[queue.pending])>1000'
+              name: 'Homer: queue pending > 1000 ({ITEM.LASTVALUE})'
+              priority: WARNING
+              description: |
+                Number of pending jobs in the queue exceeds 1000.
+                Check that workers are running and processing jobs.
+              tags:
+                - tag: scope
+                  value: performance
+            # ─── Queue pending critical ───
+            - uuid: f1e7b0d6c3f04b71b3e9b4f7a6c8d2e7
+              expression: 'last(/Homer by Zabbix agent/homer.metric[queue.pending])>10000'
+              name: 'Homer: queue pending > 10000 ({ITEM.LASTVALUE})'
+              priority: HIGH
+              tags:
+                - tag: scope
+                  value: performance
+            # ─── Queue failed ───
+            - uuid: f1e7b0d6c3f04b71b3e9b4f7a6c8d2e8
+              expression: 'last(/Homer by Zabbix agent/homer.metric[queue.failed])>100'
+              name: 'Homer: too many failed jobs ({ITEM.LASTVALUE})'
+              priority: WARNING
+              description: 'More than 100 jobs are in the failed state.'
+              tags:
+                - tag: scope
+                  value: availability
+            # ─── No primary node ───
+            - uuid: f1e7b0d6c3f04b71b3e9b4f7a6c8d2e9
+              expression: 'last(/Homer by Zabbix agent/homer.metric[nodes.primary])=0'
+              name: 'Homer: no primary node in cluster'
+              priority: HIGH
+              description: 'Cluster has no primary node. Writes may be blocked.'
+              tags:
+                - tag: scope
+                  value: cluster
+            # ─── WS subscribers = 0 ───
+            - uuid: f1e7b0d6c3f04b71b3e9b4f7a6c8d2ea
+              expression: 'last(/Homer by Zabbix agent/homer.metric[ws.subscribers])=0'
+              name: 'Homer: no WebSocket subscribers'
+              priority: WARNING
+              description: |
+                No clients subscribed to the cluster WebSocket channel.
+                If this is unexpected, check that worker nodes can reach
+                the primary node.
+              tags:
+                - tag: scope
+                  value: cluster
+            # ─── i18n missing keys ───
+            - uuid: f1e7b0d6c3f04b71b3e9b4f7a6c8d2eb
+              expression: 'last(/Homer by Zabbix agent/homer.metric[i18n.missing_keys])>50'
+              name: 'Homer: i18n missing keys > 50 ({ITEM.LASTVALUE})'
+              priority: INFO
+              description: 'Translation gaps detected.'
+              tags:
+                - tag: scope
+                  value: i18n
+            # ─── Uptime too low (was restarted) ───
+            - uuid: f1e7b0d6c3f04b71b3e9b4f7a6c8d2ec
+              expression: 'last(/Homer by Zabbix agent/homer.metric[uptime])<300'
+              name: 'Homer: node was restarted recently'
+              priority: INFO
+              tags:
+                - tag: scope
+                  value: availability

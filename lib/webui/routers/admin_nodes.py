@@ -31,6 +31,8 @@ from lib.cluster.ws_server import get_hub as get_ws_hub
 class RoleUpdateReq(BaseModel):
     role: str  # 'primary' | 'worker' | 'read-only'
 
+class RestartReq(BaseModel):
+    mode: str = "soft"  # 'soft' | 'hard'
 
 def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
     router = APIRouter()
@@ -211,6 +213,54 @@ def build_router(state: WebUIState, deps: Dependencies, templates) -> APIRouter:
                 return json.loads(body)
         except Exception as e:
             raise HTTPException(502, f"Remote diagnostics failed: {e}")
+
+    @router.post("/api/admin/nodes/{node_id}/restart",
+                 dependencies=[Depends(deps.require_perm(PERM_SYSTEM_ADMIN))])
+    def api_restart_node(node_id: str, req: RestartReq,
+                         user=Depends(deps.current_user)):
+        if req.mode not in ("soft", "hard"):
+            raise HTTPException(400, "mode must be soft|hard")
+
+        reg = _registry()
+        try:
+            nodes = reg.list_nodes(only_alive=False)
+            node = next((n for n in nodes if n.id == node_id), None)
+            if not node:
+                raise HTTPException(404, "Node not found")
+        finally:
+            reg.db.close()
+
+        local_id = state.config.get("cluster.node_id")
+
+        # ─── Local restart ───
+        if local_id and local_id == node_id:
+            import os
+            import signal
+            import threading
+            import time
+
+            def _do_restart():
+                time.sleep(0.5)  # give the HTTP response time to flush
+                try:
+                    if req.mode == "hard":
+                        os.kill(os.getpid(), signal.SIGKILL)
+                    else:
+                        os.kill(os.getpid(), signal.SIGTERM)
+                except Exception:
+                    pass
+
+            t = threading.Thread(target=_do_restart, daemon=True)
+            t.start()
+
+            state.logger.warning(
+                f"node: restarting (local, mode={req.mode}) by {user.username}",
+                command="cluster",
+            )
+            return {"id": node_id, "mode": req.mode, "local": True}
+
+        # ─── Remote restart via node command queue ───
+        _publish_command(reg, node_id, "restart", {"mode": req.mode})
+        return {"id": node_id, "mode": req.mode, "local": False}
 
     return router
 

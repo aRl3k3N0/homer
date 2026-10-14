@@ -208,14 +208,36 @@ class NodeRegistry:
     def _handle_command(self, cmd: dict):
         action = cmd["action"]
         if action == "shutdown":
-            # Signal the process to exit gracefully. Implementation depends
-            # on the process context; here we set a flag on the current
-            # running webui/scheduler (they poll it).
             self._stop.set()
+        elif action == "restart":
+            mode = (cmd["payload"].get("mode") or "soft").lower()
+            self._restart(mode)
         elif action == "set-role":
             role = cmd["payload"].get("role")
             if role:
                 self.role = role
+
+    def _restart(self, mode: str):
+        """
+        Restart this process.
+
+        soft: SIGTERM to self -- the supervisor (systemd/docker) restarts.
+        hard: SIGKILL to self -- only safe when a supervisor is present.
+        """
+        import os
+        import signal
+
+        _log.warning("node: restart requested (mode=%s)", mode)
+        try:
+            # Try to notify the supervisor via exit code 0
+            if mode == "hard":
+                os.kill(os.getpid(), signal.SIGKILL)
+            else:
+                # Send SIGTERM to our own process; the main loop must
+                # catch it and exit cleanly.
+                os.kill(os.getpid(), signal.SIGTERM)
+        except Exception as e:
+            _log.error("node: restart failed: %s", e)
 
     def stop_heartbeat(self):
         self._stop.set()

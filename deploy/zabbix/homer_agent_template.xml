@@ -1,0 +1,405 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<zabbix_export>
+    <version>5.0</version>
+    <date>2026-10-14T00:00:00Z</date>
+    <groups>
+        <group>
+            <name>Templates/Applications</name>
+        </group>
+    </groups>
+    <templates>
+        <template>
+            <template>Homer by Zabbix agent</template>
+            <name>Homer by Zabbix agent</name>
+            <description>Homer node monitoring via Zabbix agent.
+
+Requirements on the agent side:
+
+    UserParameter=homer.discover,/opt/homer/homer zabbix:discover
+    UserParameter=homer.metric[*],/opt/homer/homer zabbix:metric "$1"
+
+Provides LLD discovery of all metrics exposed by
+`homer zabbix:metric &lt;key&gt;` and a set of built-in triggers.</description>
+            <groups>
+                <group>
+                    <name>Templates/Applications</name>
+                </group>
+            </groups>
+            <applications>
+                <application>
+                    <name>Homer</name>
+                </application>
+            </applications>
+            <items>
+                <item>
+                    <name>Homer: discovery</name>
+                    <type>0</type>
+                    <snmp_community/>
+                    <snmp_oid/>
+                    <key>homer.discover</key>
+                    <delay>1h</delay>
+                    <history>1d</history>
+                    <trends>0</trends>
+                    <status>0</status>
+                    <value_type>4</value_type>
+                    <allowed_hosts/>
+                    <units/>
+                    <snmpv3_contextname/>
+                    <snmpv3_securityname/>
+                    <snmpv3_securitylevel>0</snmpv3_securitylevel>
+                    <snmpv3_authprotocol>0</snmpv3_authprotocol>
+                    <snmpv3_authpassphrase/>
+                    <snmpv3_privprotocol>0</snmpv3_privprotocol>
+                    <snmpv3_privpassphrase/>
+                    <params/>
+                    <ipmi_sensor/>
+                    <authtype>0</authtype>
+                    <username/>
+                    <password/>
+                    <publickey/>
+                    <privatekey/>
+                    <port/>
+                    <description>LLD discovery of all available metrics exposed by `homer zabbix:discover`.</description>
+                    <inventory_link>0</inventory_link>
+                    <applications>
+                        <application>
+                            <name>Homer</name>
+                        </application>
+                    </applications>
+                    <valuemap/>
+                    <logtimefmt/>
+                    <preprocessing>
+                        <step>
+                            <type>12</type>
+                            <params>$.data</params>
+                            <error_handler>0</error_handler>
+                            <error_handler_params/>
+                        </step>
+                    </preprocessing>
+                    <jmx_endpoint/>
+                    <master_item/>
+                    <timeout>3s</timeout>
+                    <url/>
+                    <query_fields/>
+                    <posts/>
+                    <status_codes>200</status_codes>
+                    <follow_redirects>1</follow_redirects>
+                    <retrieve_mode>0</retrieve_mode>
+                    <request_method>0</request_method>
+                    <output_format>0</output_format>
+                    <allow_traps>0</allow_traps>
+                    <ssl_cert_file/>
+                    <ssl_key_file/>
+                    <ssl_key_password/>
+                    <verify_peer>0</verify_peer>
+                    <verify_host>0</verify_host>
+                    <http_proxy/>
+                    <http_auth>0</http_auth>
+                    <headers/>
+                </item>
+            </items>
+
+            <discovery_rules>
+                <discovery_rule>
+                    <name>Homer: metrics</name>
+                    <type>0</type>
+                    <snmp_community/>
+                    <snmp_oid/>
+                    <key>homer.discover</key>
+                    <delay>1h</delay>
+                    <status>0</status>
+                    <allowed_hosts/>
+                    <snmpv3_contextname/>
+                    <snmpv3_securityname/>
+                    <snmpv3_securitylevel>0</snmpv3_securitylevel>
+                    <snmpv3_authprotocol>0</snmpv3_authprotocol>
+                    <snmpv3_authpassphrase/>
+                    <snmpv3_privprotocol>0</snmpv3_privprotocol>
+                    <snmpv3_privpassphrase/>
+                    <params/>
+                    <ipmi_sensor/>
+                    <authtype>0</authtype>
+                    <username/>
+                    <password/>
+                    <publickey/>
+                    <privatekey/>
+                    <port/>
+                    <description>Discovers individual metrics from the JSON returned by `homer zabbix:discover`.</description>
+                    <inventory_link>0</inventory_link>
+                    <applications>
+                        <application>
+                            <name>Homer</name>
+                        </application>
+                    </applications>
+                    <valuemap/>
+                    <logtimefmt/>
+                    <preprocessing>
+                        <step>
+                            <type>12</type>
+                            <params>$.data</params>
+                            <error_handler>0</error_handler>
+                            <error_handler_params/>
+                        </step>
+                    </preprocessing>
+                    <jmx_endpoint/>
+                    <master_item/>
+                    <timeout>3s</timeout>
+                    <url/>
+                    <query_fields/>
+                    <posts/>
+                    <status_codes>200</status_codes>
+                    <follow_redirects>1</follow_redirects>
+                    <retrieve_mode>0</retrieve_mode>
+                    <request_method>0</request_method>
+                    <output_format>0</output_format>
+                    <allow_traps>0</allow_traps>
+                    <ssl_cert_file/>
+                    <ssl_key_file/>
+                    <ssl_key_password/>
+                    <verify_peer>0</verify_peer>
+                    <verify_host>0</verify_host>
+                    <http_proxy/>
+                    <http_auth>0</http_auth>
+                    <headers/>
+                    <lifetime>30d</lifetime>
+                    <item_prototypes>
+                        <item_prototype>
+                            <name>Homer metric: {#HOMER_METRIC}</name>
+                            <type>0</type>
+                            <snmp_community/>
+                            <snmp_oid/>
+                            <key>homer.metric[{#HOMER_METRIC}]</key>
+                            <delay>60s</delay>
+                            <history>7d</history>
+                            <trends>90d</trends>
+                            <status>0</status>
+                            <value_type>3</value_type>
+                            <allowed_hosts/>
+                            <units/>
+                            <snmpv3_contextname/>
+                            <snmpv3_securityname/>
+                            <snmpv3_securitylevel>0</snmpv3_securitylevel>
+                            <snmpv3_authprotocol>0</snmpv3_authprotocol>
+                            <snmpv3_authpassphrase/>
+                            <snmpv3_privprotocol>0</snmpv3_privprotocol>
+                            <snmpv3_privpassphrase/>
+                            <params/>
+                            <ipmi_sensor/>
+                            <authtype>0</authtype>
+                            <username/>
+                            <password/>
+                            <publickey/>
+                            <privatekey/>
+                            <port/>
+                            <description>Homer metric {#HOMER_METRIC}.</description>
+                            <inventory_link>0</inventory_link>
+                            <applications>
+                                <application>
+                                    <name>Homer</name>
+                                </application>
+                            </applications>
+                            <valuemap/>
+                            <logtimefmt/>
+                            <preprocessing>
+                                <step>
+                                    <type>9</type>
+                                    <params/>
+                                    <error_handler>0</error_handler>
+                                    <error_handler_params/>
+                                </step>
+                            </preprocessing>
+                            <jmx_endpoint/>
+                            <master_item/>
+                            <timeout>3s</timeout>
+                            <url/>
+                            <query_fields/>
+                            <posts/>
+                            <status_codes>200</status_codes>
+                            <follow_redirects>1</follow_redirects>
+                            <retrieve_mode>0</retrieve_mode>
+                            <request_method>0</request_method>
+                            <output_format>0</output_format>
+                            <allow_traps>0</allow_traps>
+                            <ssl_cert_file/>
+                            <ssl_key_file/>
+                            <ssl_key_password/>
+                            <verify_peer>0</verify_peer>
+                            <verify_host>0</verify_host>
+                            <http_proxy/>
+                            <http_auth>0</http_auth>
+                            <headers/>
+                            <tags>
+                                <tag>
+                                    <tag>component</tag>
+                                    <value>homer</value>
+                                </tag>
+                                <tag>
+                                    <tag>metric</tag>
+                                    <value>{#HOMER_METRIC}</value>
+                                </tag>
+                            </tags>
+                            <trigger_prototypes>
+                                <trigger_prototype>
+                                    <expression>{Homer by Zabbix agent:homer.metric[queue.pending].last()}&gt;1000</expression>
+                                    <recovery_mode>0</recovery_mode>
+                                    <recovery_expression/>
+                                    <name>Homer: queue pending &gt; 1000 ({ITEM.LASTVALUE})</name>
+                                    <correlation_mode>0</correlation_mode>
+                                    <correlation_tag/>
+                                    <url/>
+                                    <status>0</status>
+                                    <priority>2</priority>
+                                    <description>Number of pending jobs in the queue exceeds 1000. Check that workers are running and processing jobs.</description>
+                                    <type>0</type>
+                                    <manual_close>0</manual_close>
+                                    <dependencies/>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>performance</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                                <trigger_prototype>
+                                    <expression>{Homer by Zabbix agent:homer.metric[queue.pending].last()}&gt;10000</expression>
+                                    <recovery_mode>0</recovery_mode>
+                                    <recovery_expression/>
+                                    <name>Homer: queue pending &gt; 10000 ({ITEM.LASTVALUE})</name>
+                                    <correlation_mode>0</correlation_mode>
+                                    <correlation_tag/>
+                                    <url/>
+                                    <status>0</status>
+                                    <priority>4</priority>
+                                    <description>Pending queue is critically high.</description>
+                                    <type>0</type>
+                                    <manual_close>0</manual_close>
+                                    <dependencies/>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>performance</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                                <trigger_prototype>
+                                    <expression>{Homer by Zabbix agent:homer.metric[queue.failed].last()}&gt;100</expression>
+                                    <recovery_mode>0</recovery_mode>
+                                    <recovery_expression/>
+                                    <name>Homer: too many failed jobs ({ITEM.LASTVALUE})</name>
+                                    <correlation_mode>0</correlation_mode>
+                                    <correlation_tag/>
+                                    <url/>
+                                    <status>0</status>
+                                    <priority>2</priority>
+                                    <description>More than 100 jobs are in failed state.</description>
+                                    <type>0</type>
+                                    <manual_close>0</manual_close>
+                                    <dependencies/>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>availability</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                                <trigger_prototype>
+                                    <expression>{Homer by Zabbix agent:homer.metric[nodes.primary].last()}=0</expression>
+                                    <recovery_mode>0</recovery_mode>
+                                    <recovery_expression/>
+                                    <name>Homer: no primary node in cluster</name>
+                                    <correlation_mode>0</correlation_mode>
+                                    <correlation_tag/>
+                                    <url/>
+                                    <status>0</status>
+                                    <priority>4</priority>
+                                    <description>Cluster has no primary node. Writes may be blocked.</description>
+                                    <type>0</type>
+                                    <manual_close>0</manual_close>
+                                    <dependencies/>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>cluster</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                                <trigger_prototype>
+                                    <expression>{Homer by Zabbix agent:homer.metric[ws.subscribers].last()}=0</expression>
+                                    <recovery_mode>0</recovery_mode>
+                                    <recovery_expression/>
+                                    <name>Homer: no WebSocket subscribers</name>
+                                    <correlation_mode>0</correlation_mode>
+                                    <correlation_tag/>
+                                    <url/>
+                                    <status>0</status>
+                                    <priority>3</priority>
+                                    <description>No clients subscribed to the cluster WebSocket channel. Cluster change propagation is likely broken.</description>
+                                    <type>0</type>
+                                    <manual_close>0</manual_close>
+                                    <dependencies/>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>cluster</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                                <trigger_prototype>
+                                    <expression>{Homer by Zabbix agent:homer.metric[i18n.missing_keys].last()}&gt;50</expression>
+                                    <recovery_mode>0</recovery_mode>
+                                    <recovery_expression/>
+                                    <name>Homer: i18n missing keys &gt; 50 ({ITEM.LASTVALUE})</name>
+                                    <correlation_mode>0</correlation_mode>
+                                    <correlation_tag/>
+                                    <url/>
+                                    <status>0</status>
+                                    <priority>1</priority>
+                                    <description>Translation gaps detected.</description>
+                                    <type>0</type>
+                                    <manual_close>0</manual_close>
+                                    <dependencies/>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>i18n</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                                <trigger_prototype>
+                                    <expression>{Homer by Zabbix agent:homer.metric[uptime].last()}&lt;300</expression>
+                                    <recovery_mode>0</recovery_mode>
+                                    <recovery_expression/>
+                                    <name>Homer: node was restarted recently</name>
+                                    <correlation_mode>0</correlation_mode>
+                                    <correlation_tag/>
+                                    <url/>
+                                    <status>0</status>
+                                    <priority>1</priority>
+                                    <description>Node uptime is below 5 minutes.</description>
+                                    <type>0</type>
+                                    <manual_close>0</manual_close>
+                                    <dependencies/>
+                                    <tags>
+                                        <tag>
+                                            <tag>scope</tag>
+                                            <value>availability</value>
+                                        </tag>
+                                    </tags>
+                                </trigger_prototype>
+                            </trigger_prototypes>
+                        </item_prototype>
+                    </item_prototypes>
+                    <trigger_prototypes/>
+                    <graph_prototypes/>
+                    <host_prototypes/>
+                    <master_item/>
+                </discovery_rule>
+            </discovery_rules>
+
+            <httptests/>
+            <macros/>
+            <templates/>
+            <screens/>
+        </template>
+    </templates>
+</zabbix_export>

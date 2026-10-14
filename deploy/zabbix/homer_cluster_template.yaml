@@ -1,0 +1,168 @@
+zabbix_export:
+  version: '6.4'
+  template_groups:
+    - uuid: a1e7b0d6c3f04b71b3e9b4f7a6c8d3e1
+      name: Templates/Applications
+
+  templates:
+    - uuid: b1e7b0d6c3f04b71b3e9b4f7a6c8d3e2
+      template: 'Homer Cluster'
+      name: 'Homer Cluster'
+      description: |
+        Aggregated cluster health metrics for Homer.
+
+        Requires:
+          - agent template "Homer by Zabbix agent" attached to each node
+          - Zabbix API credentials (macro {$HOMER_API_USER}, {$HOMER_API_PASS})
+            OR a dedicated metrics node that exposes
+            `homer zabbix:metric <key>` locally.
+      groups:
+        - name: Templates/Applications
+
+      macros:
+        - macro: '{$HOMER_PENDING_WARN}'
+          value: '1000'
+        - macro: '{$HOMER_PENDING_CRIT}'
+          value: '10000'
+        - macro: '{$HOMER_FAILED_WARN}'
+          value: '100'
+
+      items:
+        - uuid: c1e7b0d6c3f04b71b3e9b4f7a6c8d3e3
+          name: 'Homer cluster: nodes total'
+          type: ZABBIX_ACTIVE
+          key: 'homer.metric[nodes.total]'
+          delay: 60s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          applications:
+            - 'Homer Cluster'
+
+        - uuid: c1e7b0d6c3f04b71b3e9b4f7a6c8d3e4
+          name: 'Homer cluster: nodes primary'
+          type: ZABBIX_ACTIVE
+          key: 'homer.metric[nodes.primary]'
+          delay: 60s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          applications:
+            - 'Homer Cluster'
+
+        - uuid: c1e7b0d6c3f04b71b3e9b4f7a6c8d3e5
+          name: 'Homer cluster: nodes worker'
+          type: ZABBIX_ACTIVE
+          key: 'homer.metric[nodes.worker]'
+          delay: 60s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          applications:
+            - 'Homer Cluster'
+
+        - uuid: c1e7b0d6c3f04b71b3e9b4f7a6c8d3e6
+          name: 'Homer cluster: WS subscribers'
+          type: ZABBIX_ACTIVE
+          key: 'homer.metric[ws.subscribers]'
+          delay: 60s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          applications:
+            - 'Homer Cluster'
+
+        - uuid: c1e7b0d6c3f04b71b3e9b4f7a6c8d3e7
+          name: 'Homer cluster: queue pending'
+          type: ZABBIX_ACTIVE
+          key: 'homer.metric[queue.pending]'
+          delay: 60s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          applications:
+            - 'Homer Cluster'
+
+        - uuid: c1e7b0d6c3f04b71b3e9b4f7a6c8d3e8
+          name: 'Homer cluster: queue running'
+          type: ZABBIX_ACTIVE
+          key: 'homer.metric[queue.running]'
+          delay: 60s
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          applications:
+            - 'Homer Cluster'
+
+        - uuid: c1e7b0d6c3f04b71b3e9b4f7a6c8d3e9
+          name: 'Homer cluster: files total'
+          type: ZABBIX_ACTIVE
+          key: 'homer.metric[files.total]'
+          delay: 5m
+          history: 7d
+          trends: 90d
+          value_type: UNSIGNED
+          applications:
+            - 'Homer Cluster'
+
+      triggers:
+        - uuid: d1e7b0d6c3f04b71b3e9b4f7a6c8d3ea
+          expression: 'last(/Homer Cluster/homer.metric[nodes.primary])=0'
+          name: 'Homer cluster: no primary node'
+          priority: DISASTER
+          description: 'No node holds the primary role.'
+          tags:
+            - tag: scope
+              value: cluster
+
+        - uuid: d1e7b0d6c3f04b71b3e9b4f7a6c8d3eb
+          expression: 'last(/Homer Cluster/homer.metric[ws.subscribers])=0'
+          name: 'Homer cluster: no WebSocket subscribers'
+          priority: HIGH
+          description: |
+            No worker node is connected to the primary node via WebSocket.
+            Cluster change propagation is likely broken.
+          tags:
+            - tag: scope
+              value: cluster
+
+        - uuid: d1e7b0d6c3f04b71b3e9b4f7a6c8d3ec
+          expression: 'last(/Homer Cluster/homer.metric[queue.pending])>{$HOMER_PENDING_WARN}'
+          name: 'Homer cluster: pending jobs > {$HOMER_PENDING_WARN}'
+          priority: WARNING
+          tags:
+            - tag: scope
+              value: performance
+
+        - uuid: d1e7b0d6c3f04b71b3e9b4f7a6c8d3ed
+          expression: 'last(/Homer Cluster/homer.metric[queue.pending])>{$HOMER_PENDING_CRIT}'
+          name: 'Homer cluster: pending jobs > {$HOMER_PENDING_CRIT}'
+          priority: HIGH
+          tags:
+            - tag: scope
+              value: performance
+
+        - uuid: d1e7b0d6c3f04b71b3e9b4f7a6c8d3ee
+          expression: 'last(/Homer Cluster/homer.metric[queue.failed])>{$HOMER_FAILED_WARN}'
+          name: 'Homer cluster: failed jobs > {$HOMER_FAILED_WARN}'
+          priority: WARNING
+          tags:
+            - tag: scope
+              value: availability
+
+      dashboards:
+        - uuid: e1e7b0d6c3f04b71b3e9b4f7a6c8d3ef
+          name: 'Homer cluster overview'
+          pages:
+            - name: 'Cluster'
+              widgets:
+                - type: GRAPH
+                  name: 'Queue pending / running'
+                  width: 24
+                  height: 10
+                  fields:
+                    - type: GRAPH_DATASET
+                      ds: 0
+                      items:
+                        - 'Homer Cluster/homer.metric[queue.pending]'
+                        - 'Homer Cluster/homer.metric[queue.running]'

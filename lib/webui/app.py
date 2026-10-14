@@ -189,6 +189,9 @@ def create_app(config, root_dir=None, auth=None, enable_docs=True, logger=None):
         dependencies=[Depends(bind_locale)],
     )
 
+    from lib.webui.routers import cluster_join
+    app.include_router(cluster_join.build_router(state))
+
     # WebSocket router: no bind_locale (no templates rendered here)
     app.include_router(ws.build_router(state))
 

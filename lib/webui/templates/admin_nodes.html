@@ -94,6 +94,7 @@
           <button class="btn btn-sm btn-outline-secondary" data-act="ping" data-id="${n.id}">Ping</button>
           <button class="btn btn-sm btn-outline-info" data-act="diag" data-id="${n.id}">Diag</button>
           <button class="btn btn-sm btn-outline-primary" data-act="role" data-id="${n.id}">Set role</button>
+          <button class="btn btn-sm btn-outline-warning" data-act="restart" data-id="${n.id}">Restart</button>
           <button class="btn btn-sm btn-outline-danger" data-act="shutdown" data-id="${n.id}">Shutdown</button>
         </td>
       `;
@@ -148,7 +149,22 @@
   }
   const d = await r.json();
   showDiagnostics(d);
+} else if (act === 'restart') {
+  const mode = prompt('Restart mode (soft|hard):', 'soft');
+  if (!mode) return;
+  const r = await fetch(`/api/admin/nodes/${id}/restart`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({mode}),
+  });
+  if (r.ok) {
+    showAlert(`Restart requested (${mode})`);
+  } else {
+    showAlert(await r.text(), 'danger');
+  }
 }
+
+
   });
 
   $('btn-reload').addEventListener('click', load);

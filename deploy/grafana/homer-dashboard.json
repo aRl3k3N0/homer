@@ -25,7 +25,7 @@
       "tags": ["homer"],
       "targetBlank": true,
       "title": "Homer Web UI",
-      "tooltip": "Открыть Web UI Homer",
+      "tooltip": "Open Homer Web UI",
       "type": "link",
       "url": "http://homer.example.com:8080/"
     }
@@ -36,35 +36,113 @@
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "thresholds"},
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 10},
-              {"color": "red", "value": 50}
+              {"color": "red", "value": null},
+              {"color": "green", "value": 1}
             ]
           },
           "unit": "short"
         }
       },
-      "gridPos": {"h": 4, "w": 3, "x": 0, "y": 0},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
       "id": 1,
       "options": {
         "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
+        "graphMode": "none",
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
       "targets": [
-        {
-          "expr": "homer_queue_jobs_in_progress",
-          "refId": "A"
-        }
+        {"expr": "sum(homer_cluster_nodes_total{role=\"primary\"})", "refId": "A"}
       ],
-      "title": "Выполняется сейчас",
+      "title": "Primary nodes",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 1},
+              {"color": "green", "value": 2}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {"calcs": ["lastNotNull"]},
+        "textMode": "auto"
+      },
+      "targets": [
+        {"expr": "sum(homer_cluster_nodes_total{role=\"worker\"})", "refId": "A"}
+      ],
+      "title": "Worker nodes",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "green", "value": 1}
+            ]
+          }
+        }
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {"calcs": ["lastNotNull"]},
+        "textMode": "auto"
+      },
+      "targets": [
+        {"expr": "sum(homer_cluster_ws_subscribers)", "refId": "A"}
+      ],
+      "title": "WS subscribers",
+      "type": "stat"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 1000},
+              {"color": "red", "value": 10000}
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": {"calcs": ["lastNotNull"]},
+        "textMode": "auto"
+      },
+      "targets": [
+        {"expr": "sum(homer_queue_jobs_total{status=\"pending\"})", "refId": "A"}
+      ],
+      "title": "Pending jobs",
       "type": "stat"
     },
     {
@@ -77,26 +155,23 @@
             "steps": [
               {"color": "green", "value": null},
               {"color": "yellow", "value": 100},
-              {"color": "red", "value": 500}
+              {"color": "red", "value": 1000}
             ]
-          }
+          },
+          "unit": "short"
         }
       },
-      "gridPos": {"h": 4, "w": 3, "x": 3, "y": 0},
-      "id": 2,
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0},
+      "id": 5,
       "options": {
         "colorMode": "background",
-        "graphMode": "area",
         "reduceOptions": {"calcs": ["lastNotNull"]},
         "textMode": "auto"
       },
       "targets": [
-        {
-          "expr": "sum(increase(homer_queue_jobs_total{status=\"pending\"}[5m]))",
-          "refId": "A"
-        }
+        {"expr": "sum(homer_queue_jobs_total{status=\"failed\"})", "refId": "A"}
       ],
-      "title": "Pending (rate 5m)",
+      "title": "Failed jobs",
       "type": "stat"
     },
     {
@@ -108,28 +183,25 @@
             "mode": "absolute",
             "steps": [
               {"color": "green", "value": null},
-              {"color": "red", "value": 1}
+              {"color": "yellow", "value": 10}
             ]
           }
         }
       },
-      "gridPos": {"h": 4, "w": 3, "x": 6, "y": 0},
-      "id": 3,
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0},
+      "id": 6,
       "options": {
         "colorMode": "background",
-        "graphMode": "area",
         "reduceOptions": {"calcs": ["lastNotNull"]},
         "textMode": "auto"
       },
       "targets": [
-        {
-          "expr": "sum(increase(homer_queue_jobs_total{status=\"failed\"}[5m]))",
-          "refId": "A"
-        }
+        {"expr": "sum(homer_i18n_missing_keys)", "refId": "A"}
       ],
-      "title": "Failed (rate 5m)",
+      "title": "i18n missing keys",
       "type": "stat"
     },
+
     {
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
       "fieldConfig": {
@@ -139,30 +211,26 @@
             "mode": "absolute",
             "steps": [
               {"color": "green", "value": null},
-              {"color": "yellow", "value": 5},
+              {"color": "yellow", "value": 10},
               {"color": "red", "value": 30}
             ]
           },
           "unit": "s"
         }
       },
-      "gridPos": {"h": 4, "w": 3, "x": 9, "y": 0},
-      "id": 4,
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 4},
+      "id": 7,
       "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "reduceOptions": {"calcs": ["lastNotNull"]},
-        "textMode": "auto"
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]},
+        "tooltip": {"mode": "multi"}
       },
       "targets": [
-        {
-          "expr": "histogram_quantile(0.95, sum(rate(homer_queue_job_duration_seconds_bucket[5m])) by (le))",
-          "refId": "A"
-        }
+        {"expr": "time() - homer_scheduler_last_tick_timestamp", "legendFormat": "seconds since last tick", "refId": "A"}
       ],
-      "title": "p95 duration",
-      "type": "stat"
+      "title": "Scheduler staleness",
+      "type": "timeseries"
     },
+
     {
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
       "fieldConfig": {
@@ -171,36 +239,105 @@
           "unit": "short"
         },
         "overrides": [
-          {"matcher": {"id": "byName", "options": "done"}, "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]},
-          {"matcher": {"id": "byName", "options": "failed"}, "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]},
-          {"matcher": {"id": "byName", "options": "canceled"}, "properties": [{"id": "color", "value": {"fixedColor": "gray", "mode": "fixed"}}]},
-          {"matcher": {"id": "byName", "options": "timeout"}, "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]}
+          {
+            "matcher": {"id": "byName", "options": "primary"},
+            "properties": [{"id": "color", "value": {"fixedColor": "purple", "mode": "fixed"}}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "worker"},
+            "properties": [{"id": "color", "value": {"fixedColor": "blue", "mode": "fixed"}}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "read-only"},
+            "properties": [{"id": "color", "value": {"fixedColor": "gray", "mode": "fixed"}}]
+          }
         ]
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-      "id": 5,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
+      "id": 8,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["lastNotNull"]},
+        "tooltip": {"mode": "multi"}
+      },
+      "targets": [
+        {"expr": "sum by (role) (homer_cluster_nodes_total)", "legendFormat": "{{role}}", "refId": "A"}
+      ],
+      "title": "Cluster nodes by role",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "line", "fillOpacity": 10},
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "id": 9,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]}
+      },
+      "targets": [
+        {"expr": "sum(homer_cluster_ws_subscribers)", "legendFormat": "subscribers", "refId": "A"},
+        {"expr": "sum(rate(homer_cluster_election_role_changes_total[5m]))", "legendFormat": "role changes/s", "refId": "B"}
+      ],
+      "title": "Cluster WS subscribers and role changes",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "line", "fillOpacity": 10, "stacking": {"mode": "normal"}},
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "done"},
+            "properties": [{"id": "color", "value": {"fixedColor": "green", "mode": "fixed"}}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "failed"},
+            "properties": [{"id": "color", "value": {"fixedColor": "red", "mode": "fixed"}}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "canceled"},
+            "properties": [{"id": "color", "value": {"fixedColor": "gray", "mode": "fixed"}}]
+          },
+          {
+            "matcher": {"id": "byName", "options": "timeout"},
+            "properties": [{"id": "color", "value": {"fixedColor": "orange", "mode": "fixed"}}]
+          }
+        ]
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
+      "id": 10,
       "options": {
         "legend": {"displayMode": "table", "placement": "right", "calcs": ["sum"]},
         "tooltip": {"mode": "multi", "sort": "desc"}
       },
       "targets": [
-        {
-          "expr": "sum by (status) (rate(homer_queue_jobs_total[5m]))",
-          "legendFormat": "{{status}}",
-          "refId": "A"
-        }
+        {"expr": "sum by (status) (rate(homer_queue_jobs_total[5m]))", "legendFormat": "{{status}}", "refId": "A"}
       ],
-      "title": "Завершения по статусам (rate 5m)",
+      "title": "Job outcomes (rate 5m)",
       "type": "timeseries"
     },
+
     {
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "fieldConfig": {"defaults": {"unit": "s"}},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4},
-      "id": 6,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {"drawStyle": "line", "fillOpacity": 5}
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 20},
+      "id": 11,
       "options": {
-        "legend": {"displayMode": "table", "placement": "bottom"},
-        "tooltip": {"mode": "multi"}
+        "legend": {"displayMode": "table", "placement": "bottom"}
       },
       "targets": [
         {"expr": "histogram_quantile(0.50, sum(rate(homer_queue_job_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p50", "refId": "A"},
@@ -208,60 +345,70 @@
         {"expr": "histogram_quantile(0.95, sum(rate(homer_queue_job_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "C"},
         {"expr": "histogram_quantile(0.99, sum(rate(homer_queue_job_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p99", "refId": "D"}
       ],
-      "title": "Длительность задач (перцентили)",
+      "title": "Job duration percentiles",
       "type": "timeseries"
     },
-    {
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "fieldConfig": {"defaults": {"unit": "short"}},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-      "id": 7,
-      "options": {
-        "legend": {"displayMode": "table", "placement": "right", "calcs": ["sum"]}
-      },
-      "targets": [
-        {
-          "expr": "sum by (command) (rate(homer_command_executions_total[5m]))",
-          "legendFormat": "{{command}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Топ команд по частоте",
-      "type": "timeseries"
-    },
+
     {
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
       "fieldConfig": {
         "defaults": {
-          "custom": {"drawStyle": "bars", "fillOpacity": 60},
+          "custom": {"drawStyle": "line", "fillOpacity": 10},
           "unit": "short"
         }
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
-      "id": 8,
-      "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+      "id": 12,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["sum"]}
+      },
       "targets": [
-        {
-          "expr": "sum by (status) (increase(homer_command_executions_total[1h]))",
-          "legendFormat": "{{status}}",
-          "refId": "A"
-        }
+        {"expr": "sum by (command) (rate(homer_command_executions_total[5m]))", "legendFormat": "{{command}}", "refId": "A"}
       ],
-      "title": "Команды за час по статусам",
+      "title": "Top commands (rate 5m)",
       "type": "timeseries"
     },
+
     {
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "fieldConfig": {"defaults": {"unit": "short"}},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
-      "id": 9,
-      "options": {"legend": {"displayMode": "table", "placement": "right"}},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "line", "fillOpacity": 10},
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+      "id": 13,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"}
+      },
+      "targets": [
+        {"expr": "sum(homer_cluster_files_total)", "legendFormat": "files tracked", "refId": "A"}
+      ],
+      "title": "Cluster files tracked",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "line", "fillOpacity": 10},
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
+      "id": 14,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right"}
+      },
       "targets": [
         {"expr": "sum by (provider, status) (rate(homer_notifications_total[5m]))", "legendFormat": "{{provider}}/{{status}}", "refId": "A"}
       ],
-      "title": "Уведомления (rate 5m)",
+      "title": "Notifications (rate 5m)",
       "type": "timeseries"
     },
+
     {
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
       "fieldConfig": {
@@ -270,72 +417,83 @@
           "unit": "short"
         }
       },
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 20},
-      "id": 10,
-      "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 36},
+      "id": 15,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"}
+      },
       "targets": [
         {"expr": "sum by (driver, op) (rate(homer_db_queries_total[5m]))", "legendFormat": "{{driver}}/{{op}}", "refId": "A"}
       ],
-      "title": "SQL-запросы по драйверам",
+      "title": "DB queries by driver",
       "type": "timeseries"
     },
+
     {
       "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
       "fieldConfig": {
-        "defaults": {"unit": "short", "custom": {"drawStyle": "line", "fillOpacity": 10}},
-        "overrides": [
-          {"matcher": {"id": "byRegexp", "options": ".*notify.*"}, "properties": [{"id": "color", "value": {"fixedColor": "purple", "mode": "fixed"}}]}
-        ]
+        "defaults": {
+          "custom": {"drawStyle": "bars", "fillOpacity": 60},
+          "unit": "short"
+        }
       },
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
-      "id": 11,
-      "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 44},
+      "id": 16,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"}
+      },
+      "targets": [
+        {"expr": "histogram_quantile(0.90, sum(rate(homer_job_attempts_bucket[1h])) by (le))", "legendFormat": "p90 attempts", "refId": "A"}
+      ],
+      "title": "Job attempts (p90, 1h)",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {"drawStyle": "line", "fillOpacity": 10}
+        }
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 44},
+      "id": 17,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom"}
+      },
+      "targets": [
+        {"expr": "sum(homer_i18n_cache_size)", "legendFormat": "cache size", "refId": "A"},
+        {"expr": "sum(rate(homer_i18n_cache_hits_total[5m]))", "legendFormat": "hits/s", "refId": "B"},
+        {"expr": "sum(rate(homer_i18n_cache_misses_total[5m]))", "legendFormat": "misses/s", "refId": "C"}
+      ],
+      "title": "i18n cache",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
+      "fieldConfig": {
+        "defaults": {
+          "custom": {"drawStyle": "line", "fillOpacity": 10},
+          "unit": "short"
+        }
+      },
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 52},
+      "id": 18,
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right", "calcs": ["sum"]}
+      },
       "targets": [
         {"expr": "sum by (source) (rate(homer_errors_total[5m]))", "legendFormat": "{{source}}", "refId": "A"}
       ],
-      "title": "Ошибки по источникам",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "fieldConfig": {"defaults": {"unit": "s"}},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
-      "id": 12,
-      "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
-      "targets": [
-        {"expr": "time() - homer_scheduler_last_tick_timestamp", "legendFormat": "секунд с последнего tick", "refId": "A"}
-      ],
-      "title": "Возраст последнего tick()",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "fieldConfig": {"defaults": {"unit": "short"}},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
-      "id": 13,
-      "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
-      "targets": [
-        {"expr": "sum(rate(homer_scheduler_ticks_total[5m]))", "legendFormat": "tick/s", "refId": "A"}
-      ],
-      "title": "Частота tick()",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {"type": "prometheus", "uid": "${DS_PROMETHEUS}"},
-      "fieldConfig": {"defaults": {"unit": "short"}},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 36},
-      "id": 14,
-      "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
-      "targets": [
-        {"expr": "histogram_quantile(0.90, sum(rate(homer_job_attempts_bucket[1h])) by (le))", "legendFormat": "p90 попыток", "refId": "A"}
-      ],
-      "title": "Распределение попыток (p90 за 1h)",
+      "title": "Errors by source (rate 5m)",
       "type": "timeseries"
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["homer", "queue", "scheduler"],
+  "tags": ["homer", "queue", "scheduler", "cluster"],
   "templating": {
     "list": [
       {
@@ -351,37 +509,14 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
-      },
-      {
-  "datasource": {"type": "loki", "uid": "${DS_LOKI}"},
-  "gridPos": {"h": 12, "w": 24, "x": 0, "y": 44},
-  "id": 20,
-  "options": {
-    "dedupStrategy": "none",
-    "enableLogDetails": true,
-    "prettifyLogMessage": true,
-    "showCommonLabels": false,
-    "showLabels": true,
-    "showTime": true,
-    "sortOrder": "Descending",
-    "wrapLogMessage": true
-  },
-  "targets": [
-    {
-      "expr": "{job=\"homer\"} | json | line_format \"{{.msg}}\"",
-      "refId": "A"
-    }
-  ],
-  "title": "Логи Homer",
-  "type": "logs"
-}
+      }
     ]
   },
-  "time": {"from": "now-3h", "to": "now"},
+  "time": {"from": "now-6h", "to": "now"},
   "timepicker": {},
   "timezone": "browser",
-  "title": "Homer — Queue & Scheduler",
+  "title": "Homer — Queue, Scheduler, Cluster",
   "uid": "homer-queue",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
