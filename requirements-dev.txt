@@ -27,5 +27,5 @@ pre-commit-hooks>=4.6
 
 websockets>=12.0
 httpx>=0.27            # для fastapi.testclient
-requests>=2.31
+requests>=2.34.2
 httpx2
