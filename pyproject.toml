@@ -1,44 +1,45 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "homer"
-version = "1.0.0"
-description = "Консольный фреймворк в стиле Laravel Artisan"
+version = "0.1.0"
+description = "Console framework in the spirit of Artisan"
 readme = "README.md"
-requires-python = ">=3.9"
-license = "MIT"
-authors = [{name = "Homer contributors"}]
-keywords = ["cli", "artisan", "scheduler", "queue", "notifications", "cron"]
+requires-python = ">=3.11"
+license = { text = "BSD-3-Clause" }
+authors = [{ name = "aRl3k3N0" }]
+keywords = ["cli", "scheduler", "queue", "notifications", "cron"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Topic :: System :: Systems Administration",
 ]
-
 dependencies = [
     "PyYAML>=6.0",
     "psycopg2-binary>=2.9.13",
     "Jinja2>=3.0.0",
-    "requests>=2.34.2",
+    "requests>=2.32",
 ]
+
+[project.scripts]
+homer = "homer.cli:main"
 
 [project.optional-dependencies]
 oracle = ["cx_Oracle>=8.3.0"]
 postgres = ["psycopg2-binary>=2.9.13"]
 mysql = ["PyMySQL>=1.1.0"]
 mssql = ["pyodbc>=4.0.0", "pymssql>=2.3.0"]
-clickhouse = ["clickhouse-driver>=0.2.11", "clickhouse-connect>=1.10.0"]
-redis = ["redis>=8.1.0"]
-mongo = ["pymongo>=4.18.2"]
+clickhouse = ["clickhouse-driver>=0.2.6", "clickhouse-connect>=0.7.0"]
+redis = ["redis>=5.0"]
+mongo = ["pymongo>=4.10"]
 database = [
     "cx_Oracle>=8.3.0",
     "psycopg2-binary>=2.9.13",
@@ -47,20 +48,34 @@ database = [
     "pymssql>=2.3.0",
     "clickhouse-driver>=0.2.6",
     "clickhouse-connect>=0.7.0",
-    "redis>=8.1.0",
-    "pymongo>=4.18.2",
+    "redis>=5.0",
+    "pymongo>=4.10",
 ]
-webui = ["fastapi>=0.110", "uvicorn[standard]>=0.54.0", "pydantic>=2.6"]
+webui = ["fastapi>=0.110", "uvicorn[standard]>=0.29", "pydantic>=2.6"]
 dev = [
-    "pytest>=9.1.1",
-    "pytest-cov>=7.1.0",
-    "pytest-timeout>=2.4.0",
-    "pytest-benchmark>=5.3.0",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-timeout>=2.3",
+    "pytest-benchmark>=4.0",
     "httpx>=0.27",
 ]
 
+[project.urls]
+Homepage = "https://github.com/aRl3k3N0/homer"
+Documentation = "https://aRl3k3N0.github.io/homer/"
+Changelog = "https://github.com/aRl3k3N0/homer/blob/main/CHANGELOG.md"
+Issues = "https://github.com/aRl3k3N0/homer/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["homer*"]
+exclude = ["tests*", "benchmarks*"]
+
+[tool.setuptools.package-data]
+homer = ["py.typed"]
+
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["src/tests"]
 python_files = ["test_*.py"]
 addopts = "-ra -q --strict-markers --timeout=120"
 asyncio_mode = "auto"
@@ -72,21 +87,10 @@ markers = [
     "contracts: OpenAPI-контракты",
     "unit: обычные unit-тесты",
 ]
-filterwarnings = [
-    # FastAPI мигрирует на lifespan — заглушим до рефакторинга
-    "ignore:.*on_event is deprecated.*:DeprecationWarning",
-    # transitive deprecations из ldap3/pyasn1
-    "ignore:.*tagMap is deprecated.*:DeprecationWarning",
-    "ignore:.*typeMap is deprecated.*:DeprecationWarning",
-    # starlette testclient перейдёт на httpx2
-    "ignore::starlette.testclient.StarletteDeprecationWarning",
-    # sqlite3 datetime adapter — починим сериализацией в BaseDB
-    "ignore:The default datetime adapter is deprecated:DeprecationWarning",
-]
 
 [tool.coverage.run]
-source = ["lib"]
-omit = ["tests/*", "*/__init__.py"]
+source = ["src"]
+omit = ["src/tests/*", "*/__init__.py"]
 
 [tool.benchmark]
 min_rounds = 20
@@ -97,16 +101,9 @@ warmup_iterations = 3
 disable_gc = true
 timer = "time.perf_counter"
 
-[project.urls]
-Homepage = "https://github.com/aRl3k3N0/homer"
-Documentation = "https://aRl3k3N0.github.io/homer/"
-Changelog = "https://github.com/aRl3k3N0/homer/blob/main/CHANGELOG.md"
-Issues = "https://github.com/aRl3k3N0/homer/issues"
-
-# ─────────── python-semantic-release ───────────
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]
-version_variables = ["lib/__init__.py:__version__"]
+version_variables = ["src/homer/__init__.py:__version__"]
 branch = "main"
 tag_format = "v{version}"
 commit_parser = "conventional"
@@ -122,7 +119,7 @@ allowed_tags = [
 ]
 minor_tags = ["feat"]
 patch_tags = ["fix", "perf"]
-default_bump_level = 0     # без явного типа — без релиза
+default_bump_level = 0
 
 [tool.semantic_release.remote]
 type = "github"
@@ -136,18 +133,3 @@ exclude_commit_patterns = [
     "^Merge branch.*",
     "^Merge pull request.*",
 ]
-
-[tool.setuptools.package-data]
-lib = ["py.typed"]
-"lib.webui" = [
-    "templates/*.html",
-    "templates/fragments/*.html",
-    "static/*",
-]
-"lib.migrations" = ["*/*.sql"]
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["commands*", "lib*"]
-exclude = ["tests*", "benchmarks*", "examples*", "deploy*"]
-

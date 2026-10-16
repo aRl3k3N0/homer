@@ -1,0 +1,48 @@
+<div class="table-responsive">
+<table class="table table-sm table-hover align-middle">
+  <thead class="table-light">
+    <tr>
+      <th>ID</th>
+      <th>Команда</th>
+      <th>Аргументы</th>
+      <th>Приоритет</th>
+      <th>Статус</th>
+      <th>Try</th>
+      <th>Создана</th>
+      <th>Запущена</th>
+      <th>Завершена</th>
+      <th>Источник</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for j in jobs %}
+    <tr>
+      <td><a href="/jobs/{{ j.id }}">#{{ j.id }}</a></td>
+      <td>{{ j.command }}</td>
+      <td class="args" title="{{ j.args }}">{{ j.args }}</td>
+      <td>{{ j.priority }}</td>
+      <td><span class="badge bg-{{ j.status | status_color }} badge-status">{{ j.status }}</span></td>
+      <td>{{ j.attempts }}/{{ j.max_attempts }}</td>
+      <td>{{ j.created_at or '—' }}</td>
+      <td>{{ j.started_at or '—' }}</td>
+      <td>{{ j.finished_at or '—' }}</td>
+      <td>{{ j.triggered_by or '—' }}</td>
+      <td class="text-end">
+        {% if j.status == 'pending' or j.status == 'running' %}
+          <form method="post" action="/jobs/{{ j.id }}/cancel" style="display:inline">
+            <button class="btn btn-sm btn-outline-danger">Отменить</button>
+          </form>
+        {% elif j.status in ('failed', 'timeout', 'canceled') %}
+          <form method="post" action="/jobs/{{ j.id }}/retry" style="display:inline">
+            <button class="btn btn-sm btn-outline-primary">Retry</button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="11" class="text-center text-muted py-4">Задач нет</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>

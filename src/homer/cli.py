@@ -1,0 +1,342 @@
+"""
+Homer -- command-line framework.
+
+Startup order:
+    1. Parse global options (--config, --lang, --no-cache, --verbose).
+    2. Load config (with includes and optional cache).
+    3. Resolve paths (system vs project).
+    4. Initialise i18n with three layers: system, project, plugin.
+    5. Load plugin and command metadata (with optional cache).
+    6. Execute the requested command.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import threading
+import time
+from pathlib import Path
+
+from homer.core.console import console
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT_DIR))
+
+import asyncio
+from homer.cluster.nodes import NodeRegistry
+from homer.cluster.files import ClusterFiles
+from homer.core.arguments import ArgumentParser, extract_globals
+from homer.core.command_loader import CommandLoader
+from homer.core.config import Config
+from homer.i18n import get_i18n, configure as i18n_configure, set_locale
+from homer.i18n.manager import Layer
+from homer.core.logger import Logger
+from homer.core.registry_cache import RegistryCache
+
+def _start_cluster_client(config, cluster_files):
+    if not config.get("cluster.enabled", False):
+        return None
+    if config.get("cluster.role", "worker") == "primary":
+        return None  # primary не подключается сам к себе
+
+    url = config.get("cluster.primary_ws_url")
+    if not url:
+        return None
+    token = config.get("cluster.ws_token")
+
+    from homer.cluster.ws_client import ClusterClient
+    client = ClusterClient(url, cluster_files, token)
+
+    def run():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(client.run())
+        finally:
+            loop.close()
+
+    t = threading.Thread(target=run, daemon=True, name="homer-cluster-ws")
+    t.start()
+    return t
+
+def build_context(config, logger, args, command_name, commands,
+                  loader=None, paths=None):
+    """Build the context passed to a command."""
+    from homer.queue import QueueStorage, Dispatcher
+
+    _storage = None
+    _dispatcher = None
+
+    class _LazyQueue:
+        def _get(self):
+            nonlocal _storage, _dispatcher
+            if _dispatcher is None:
+                _storage = QueueStorage(config)
+                _dispatcher = Dispatcher(
+                    _storage,
+                    config=config,
+                    triggered_by=f"cli:{command_name}",
+                )
+            return _dispatcher
+
+        def __getattr__(self, name):
+            return getattr(self._get(), name)
+
+    return {
+        "config": config,
+        "logger": logger,
+        "args": args,
+        "root_dir": paths.base if paths else ROOT_DIR,
+        "paths": paths,
+        "command_name": command_name,
+        "commands": commands,
+        "loader": loader,
+        "queue": _LazyQueue(),
+    }
+
+
+def main() -> int:
+    started = time.perf_counter()
+
+    # ─────────── Global options ───────────
+    globals_, argv = extract_globals(sys.argv[1:])
+
+    # ─────────── Config path ───────────
+    if globals_.config:
+        config_path = Path(globals_.config).expanduser().resolve()
+    elif os.environ.get("HOMER_CONFIG"):
+        config_path = os.environ.get("HOMER_CONFIG")
+    else:
+        console.error("The HOMER_CONFIG environment variable was not found.")
+        exit(1)
+
+    cache_enabled = (
+        not globals_.no_cache
+        and os.environ.get("HOMER_NO_CACHE") != "1"
+    )
+
+    # ─────────── Config ───────────
+    config = Config(config_path)
+
+    # ─────────── Paths ───────────
+    from homer.core.paths import Paths
+    paths = Paths.from_config(config, config_path)
+    paths.ensure_all()
+    config.paths = paths
+
+    logger = Logger(config, ROOT_DIR)
+
+    if globals_.verbose:
+        logger.info("config: %s", config_path)
+        logger.info("base:   %s", paths.base)
+
+    # ─────────── i18n (three layers) ───────────
+    i18n_cfg = config.get("i18n", {}) or {}
+    i18n = i18n_configure(
+        default_locale=i18n_cfg.get("locale", "en"),
+        fallback_locale=i18n_cfg.get("fallback", "en"),
+        missing_log=bool(i18n_cfg.get("missing_log", True)),
+        cache_size=int(i18n_cfg.get("cache_size", 4096)),
+    )
+    if globals_.lang:
+        set_locale(globals_.lang)
+
+    # 1) System translations (core)
+    system_langs = ROOT_DIR / "resources" / "i18n"
+    if system_langs.exists():
+        i18n.load_dir(system_langs, layer=Layer.SYSTEM)
+
+    # 2) Project translations
+    if paths.langs_dir.exists():
+        i18n.load_dir(paths.langs_dir, layer=Layer.PROJECT)
+
+    node_registry = NodeRegistry(
+        config,
+        role=config.get("cluster.role", "worker"),
+        meta={"pid": os.getpid()},
+        heartbeat_interval=int(config.get("cluster.heartbeat_interval", 15)),
+        ttl_seconds=int(config.get("cluster.ttl_seconds", 60)),
+    )
+    node_registry.register()
+
+    cluster_files = None
+    if config.get("cluster.enabled", False):
+        cluster_files = ClusterFiles(
+            config,
+            node_id=node_registry.node_id,
+            paths=paths,
+            role=node_registry.role,
+        )
+        cluster_files.initial_sync()
+        cluster_files.start_watcher()
+
+        # On each command, if cluster_files — expose via context
+        context_extras = {"cluster": cluster_files}
+
+    # register shutdown
+    import atexit
+    atexit.register(lambda: (node_registry.unregister(),
+                             node_registry.stop_heartbeat()))
+
+    # ─────────── Parse command args ───────────
+    parser = ArgumentParser()
+    parser.parse(argv)
+
+    # ─────────── Registry cache ───────────
+    registry_cache = RegistryCache(
+        paths.base,
+        enabled=cache_enabled,
+        cache_path=paths.cache_dir / "registry.json",
+        commands_dir=paths.commands_dir,
+        plugins_dir=paths.plugins_dir,
+    )
+
+    from homer.plugins import get_manager
+    plugin_mgr = get_manager()
+    plugin_mgr._registry_cache = registry_cache
+
+    loader = CommandLoader(paths.commands_dir, root_dir=paths.base)
+
+    cached = registry_cache.load() if cache_enabled else None
+    cache_hit = bool(cached and registry_cache.is_fresh(cached))
+
+    if cache_hit:
+        plugin_mgr.discover(paths.plugins_dir, config, use_cache=True)
+        plugin_mgr.load_all({"config": config, "root_dir": paths.base})
+        for p in plugin_mgr.list():
+            if p.commands_dir:
+                loader.add_plugin_commands(p.name, p.commands_dir)
+
+        commands = {}
+        for name, info in (cached.get("commands") or {}).items():
+            commands[name] = {
+                "path": paths.base / info["path"],
+                "description": info.get("description", ""),
+                "source": info.get("source", "user"),
+                "lazy": True,
+                "module": None,
+                "execute": None,
+            }
+        for name, meta in loader.load_commands().items():
+            commands.setdefault(name, meta)
+    else:
+        plugin_mgr.discover(paths.plugins_dir, config, use_cache=False)
+        plugin_mgr.load_all({"config": config, "root_dir": paths.base})
+        for p in plugin_mgr.list():
+            if p.commands_dir:
+                loader.add_plugin_commands(p.name, p.commands_dir)
+        commands = loader.load_commands()
+
+    # 3) Plugin translations (highest priority)
+    for p in plugin_mgr.list():
+        if p.langs_dir:
+            i18n.load_dir(p.langs_dir, layer=Layer.PLUGIN)
+
+    # Built-ins
+    from homer.commands import BUILTIN_COMMANDS
+    for name, info in BUILTIN_COMMANDS.items():
+        commands.setdefault(name, info)
+
+    # ─────────── Help / list ───────────
+    if not parser.command or parser.command in ("help", "list", "--help", "-h"):
+        show_commands_list(commands)
+        return 0
+
+    if parser.command not in commands:
+        print(f"Command '{parser.command}' not found.")
+        print("Run 'homer' to see available commands.")
+        return 1
+
+    # ─────────── Execute ───────────
+    cmd_name = parser.command
+    command_info = commands[cmd_name]
+
+    if not command_info.get("execute"):
+        loaded = loader.get_command(cmd_name)
+        if not loaded or not loaded.get("execute"):
+            print(f"Failed to load command '{cmd_name}'.")
+            return 1
+        command_info = loaded
+
+    try:
+        logger.info("Running command: %s", cmd_name, command=cmd_name)
+        logger.info("Arguments: %s", parser.options, command=cmd_name)
+
+        context = build_context(
+            config=config,
+            logger=logger,
+            args=parser.options,
+            command_name=cmd_name,
+            commands=commands,
+            loader=loader,
+            paths=paths,
+        )
+
+        result = command_info["execute"](context)
+        code = result if isinstance(result, int) else 0
+        logger.info("Command finished with code: %s", code, command=cmd_name)
+
+        if os.environ.get("HOMER_SHOW_TIME") == "1":
+            elapsed = (time.perf_counter() - started) * 1000
+            print(f"[startup: {elapsed:.1f} ms, cache_hit={cache_hit}]")
+
+        return code
+
+    except KeyboardInterrupt:
+        logger.warning("Interrupted by user", command=cmd_name)
+        print()
+        return 130
+    except Exception as e:
+        logger.error("Command failed: %s", e, command=cmd_name, exc_info=True)
+        print(f"Error: {e}")
+        return 1
+
+
+def show_commands_list(commands):
+    try:
+        from lib.console import console, Color
+    except ImportError:
+        for name in sorted(commands):
+            print(f"  {name:<30} {commands[name].get('description', '')}")
+        return
+
+    console.banner("HOMER", "Command-line framework", color=Color.BRIGHT_CYAN)
+
+    visible = {
+        name: info
+        for name, info in commands.items()
+        if not info.get("hidden") and not name.startswith("_")
+    }
+
+    if not visible:
+        console.warning("No commands available")
+        return
+
+    console.section("Available commands")
+
+    grouped: dict[str, list[tuple[str, dict]]] = {}
+    for name, info in sorted(visible.items()):
+        namespace = name.split(":")[0] if ":" in name else "general"
+        grouped.setdefault(namespace, []).append((name, info))
+
+    for namespace, items in sorted(grouped.items()):
+        if namespace != "general":
+            print(console.colored(f"  {namespace}",
+                                  Color.BOLD + Color.BRIGHT_MAGENTA))
+        for name, info in items:
+            desc = info.get("description") or "No description"
+            src = info.get("source", "user")
+            marker = "" if src == "user" else console.dim(" [builtin]")
+            print(f"    {console.colored(name.ljust(30), Color.BRIGHT_YELLOW)} "
+                  f"{console.dim(desc)}{marker}")
+        print()
+
+    console.line()
+    console.comment("  Usage: homer <command> [--param=value ...]")
+    console.line()
+    print()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

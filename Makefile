@@ -72,22 +72,22 @@ help:
 PYTEST ?= $(PY) -m pytest
 
 test-all:
-	$(PYTEST) tests/ -v
+	$(PYTEST) src/tests/ -v
 
 test-unit:
-	$(PYTEST) tests/ -v -m "not integration and not webui and not contracts"
+	$(PYTEST) src/tests/ -v -m "not integration and not webui and not contracts"
 
 test-integration:
-	$(PYTEST) tests/integration/ -v -m "integration"
+	$(PYTEST) src/tests/integration/ -v -m "integration"
 
 test-webui:
-	$(PYTEST) tests/webui/ -v -m "webui"
+	$(PYTEST) src/tests/webui/ -v -m "webui"
 
 test-contracts:
-	$(PYTEST) tests/contracts/ -v -m "contracts"
+	$(PYTEST) src/tests/contracts/ -v -m "contracts"
 
 test-cov-all:
-	$(PYTEST) tests/ \
+	$(PYTEST) src/tests/ \
 		--cov=lib \
 		--cov-report=term-missing \
 		--cov-report=html:htmlcov \
@@ -231,14 +231,14 @@ pre-commit-update:
 # ─────────── Benchmark ───────────
 
 benchmark:
-	$(PYTEST) benchmarks/ \
+	$(PYTEST) src/benchmarks/ \
 		--benchmark-only \
 		--benchmark-autosave \
 		--benchmark-storage=.benchmarks \
 		--benchmark-columns=min,max,mean,stddev,median,ops
 
 benchmark-compare:
-	$(PYTEST) benchmarks/ \
+	$(PYTEST) src/benchmarks/ \
 		--benchmark-only \
 		--benchmark-compare \
 		--benchmark-storage=.benchmarks

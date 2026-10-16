@@ -19,7 +19,7 @@ JSON="${JSON:-benchmark.json}"
 mkdir -p .benchmarks
 
 BENCH_ARGS=(
-    benchmarks/
+    src/benchmarks/
     --benchmark-only
     "--benchmark-json=$JSON"
     --benchmark-columns=min,max,mean,stddev,median,ops

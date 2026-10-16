@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+{% block title %}Roles — Homer{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Roles</h3>
+  <button class="btn btn-primary" id="r-new">+ New role</button>
+</div>
+
+<div id="r-alert" class="d-none"></div>
+
+<table class="table table-sm table-hover align-middle" id="r-table">
+  <thead class="table-light">
+    <tr>
+      <th>Name</th>
+      <th>Display name</th>
+      <th>Builtin</th>
+      <th>Permissions</th>
+      <th class="text-end"></th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<!-- Role form modal -->
+<div class="modal fade" id="role-modal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="role-modal-title">Role</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2">
+          <label class="form-label">Name</label>
+          <input type="text" class="form-control" id="rf-name">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Display name</label>
+          <input type="text" class="form-control" id="rf-display">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Permissions</label>
+          <div id="rf-perms" class="border rounded p-2"
+               style="max-height:340px;overflow:auto"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="role-save">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  let rolesCache = [];
+  let allPerms = [];
+  let editMode = null;    // null | 'new' | name
+
+  function showAlert(msg, kind = 'success') {
+    const el = $('r-alert');
+    el.className = `alert alert-${kind}`;
+    el.textContent = msg;
+    setTimeout(() => { el.className = 'd-none'; }, 4000);
+  }
+
+  async function loadAll() {
+    const [r1, r2] = await Promise.all([
+      fetch('/api/admin/roles', { credentials: 'same-origin' }),
+      fetch('/api/admin/permissions', { credentials: 'same-origin' }),
+    ]);
+    rolesCache = await r1.json();
+    allPerms = await r2.json();
+    renderTable();
+  }
+
+  function renderTable() {
+    const tbody = $('r-table').querySelector('tbody');
+    tbody.innerHTML = '';
+    for (const r of rolesCache) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><b>${escapeHtml(r.name)}</b></td>
+        <td>${escapeHtml(r.display_name || '—')}</td>
+        <td>${r.builtin ? '<span class="badge bg-light text-dark">yes</span>' : '—'}</td>
+        <td><span class="text-muted">${r.permissions.length} permissions</span></td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-outline-primary" data-act="edit" data-n="${escapeHtml(r.name)}">Edit</button>
+          ${r.builtin ? '' : `<button class="btn btn-sm btn-outline-danger" data-act="del" data-n="${escapeHtml(r.name)}">Delete</button>`}
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+  }
+
+  function renderPerms(selected) {
+    const box = $('rf-perms');
+    box.innerHTML = '';
+    for (const p of allPerms) {
+      const id = `perm-${p.replace(/\./g, '-')}`;
+      const wrap = document.createElement('div');
+      wrap.className = 'form-check form-check-inline';
+      wrap.style.minWidth = '260px';
+      wrap.innerHTML = `
+        <input class="form-check-input" type="checkbox" id="${id}" value="${escapeHtml(p)}"
+               ${selected.includes(p) ? 'checked' : ''}>
+        <label class="form-check-label" for="${id}">
+          <code>${escapeHtml(p)}</code>
+        </label>
+      `;
+      box.appendChild(wrap);
+    }
+  }
+
+  function openNew() {
+    editMode = 'new';
+    $('role-modal-title').textContent = 'New role';
+    $('rf-name').value = '';
+    $('rf-name').disabled = false;
+    $('rf-display').value = '';
+    renderPerms([]);
+    new bootstrap.Modal($('role-modal')).show();
+  }
+
+  function openEdit(name) {
+    const r = rolesCache.find(x => x.name === name);
+    if (!r) return;
+    editMode = name;
+    $('role-modal-title').textContent = `Edit: ${name}`;
+    $('rf-name').value = name;
+    $('rf-name').disabled = true;
+    $('rf-display').value = r.display_name || '';
+    renderPerms(r.permissions);
+    new bootstrap.Modal($('role-modal')).show();
+  }
+
+  async function saveRole() {
+    const name = $('rf-name').value.trim();
+    const display_name = $('rf-display').value.trim();
+    const permissions = Array.from(
+      $('rf-perms').querySelectorAll('input:checked')
+    ).map(el => el.value);
+
+    try {
+      let r;
+      if (editMode === 'new') {
+        r = await fetch('/api/admin/roles', {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name, display_name, permissions}),
+        });
+      } else {
+        r = await fetch(`/api/admin/roles/${encodeURIComponent(editMode)}`, {
+          method: 'PATCH', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({display_name, permissions}),
+        });
+      }
+      if (!r.ok) throw new Error((await r.json()).detail || 'Failed');
+      showAlert(`Role '${name}' saved`);
+      bootstrap.Modal.getInstance($('role-modal')).hide();
+      await loadAll();
+    } catch (e) {
+      showAlert(e.message, 'danger');
+    }
+  }
+
+  async function deleteRole(name) {
+    if (!confirm(`Delete role '${name}'?`)) return;
+    try {
+      const r = await fetch(`/api/admin/roles/${encodeURIComponent(name)}`, {
+        method: 'DELETE', credentials: 'same-origin',
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || 'Failed');
+      showAlert(`Role '${name}' deleted`);
+      await loadAll();
+    } catch (e) {
+      showAlert(e.message, 'danger');
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+  }
+
+  $('r-new').onclick = openNew;
+  $('role-save').onclick = saveRole;
+  $('r-table').addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-act]');
+    if (!btn) return;
+    if (btn.dataset.act === 'edit') openEdit(btn.dataset.n);
+    if (btn.dataset.act === 'del')  deleteRole(btn.dataset.n);
+  });
+
+  loadAll();
+})();
+</script>
+
+{% endblock %}

@@ -1,9 +1,0 @@
-Job #{{ job_id }} ({{ command }}) — {{ status }}
-
-Exit code: {{ exit_code }}
-Попыток: {{ attempts }}/{{ max_attempts }}
-
-{% if error %}
-Ошибка:
-{{ error }}
-{% endif %}

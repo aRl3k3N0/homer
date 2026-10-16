@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Запуск {{ entry.id[:8] }} — Homer{% endblock %}
+{% block content %}
+
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/history">История</a></li>
+    <li class="breadcrumb-item active">{{ entry.id[:8] }}</li>
+  </ol>
+</nav>
+
+<div class="row mb-3">
+  <div class="col-md-6">
+    <table class="table table-sm">
+      <tr><th>Команда</th><td>{{ entry.command }}</td></tr>
+      <tr><th>Аргументы</th><td><code>{{ entry.args }}</code></td></tr>
+      <tr><th>Начало</th><td>{{ entry.started_at }}</td></tr>
+      <tr><th>Конец</th><td>{{ entry.finished_at or '—' }}</td></tr>
+      <tr><th>Exit code</th><td>{{ entry.exit_code if entry.exit_code is not none else '—' }}</td></tr>
+      <tr><th>Длительность</th><td>{{ entry.duration_ms }} мс</td></tr>
+      <tr><th>IP</th><td>{{ entry.client_ip or '—' }}</td></tr>
+      <tr><th>User-Agent</th><td class="small">{{ entry.user_agent or '—' }}</td></tr>
+    </table>
+    <a class="btn btn-primary"
+       href="/console?command={{ entry.command }}&args={{ entry.args | urlencode }}">
+      Повторить
+    </a>
+    <a class="btn btn-outline-secondary"
+       href="/api/history/{{ entry.id }}">Скачать JSON</a>
+  </div>
+
+  <div class="col-md-6">
+    {% if entry.input_log %}
+      <h5>Ввод пользователя</h5>
+      <ul>
+      {% for line in entry.input_log %}
+        <li><code>{{ line }}</code></li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+</div>
+
+<h5>Вывод</h5>
+<pre style="background:#1e1e1e;color:#d4d4d4;padding:1rem;max-height:60vh;overflow:auto;border-radius:6px;">{{ entry.output or '' }}</pre>
+
+{% endblock %}

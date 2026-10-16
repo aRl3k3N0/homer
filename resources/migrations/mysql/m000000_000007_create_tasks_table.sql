@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS tasks (
+    id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    name         VARCHAR(255)    NOT NULL,
+    command      VARCHAR(255)    NOT NULL,
+    args         TEXT            NOT NULL,
+    cron         VARCHAR(128)    NOT NULL,
+    enabled      TINYINT(1)      NOT NULL DEFAULT 1,
+    description  TEXT            NULL,
+    last_run     TIMESTAMP(6)    NULL,
+    last_status  VARCHAR(32)     NULL,
+    last_error   TEXT            NULL,
+    next_run     TIMESTAMP(6)    NULL,
+    locked_by    VARCHAR(255)    NULL,
+    lease_until  TIMESTAMP(6)    NULL,
+    run_id       VARCHAR(64)     NULL,
+    heartbeat_at TIMESTAMP(6)    NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_tasks_name (name),
+    KEY idx_tasks_enabled (enabled),
+    KEY idx_tasks_lease   (lease_until)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

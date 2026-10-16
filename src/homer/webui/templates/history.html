@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}{{ _('webui.history.title') }} — Homer{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h3>
+        {{ _('webui.history.title') }}
+        <span class="badge bg-secondary">{{ history_username }}</span>
+        {% if can_view_all and view_user and view_user != self_username %}
+        <span class="badge bg-warning text-dark">
+        {{ _('webui.history.viewing_other') }}
+      </span>
+        {% endif %}
+    </h3>
+
+    <form method="get" class="row g-2 align-items-center">
+        {% if can_view_all %}
+        <div class="col-auto">
+            <select class="form-select form-select-sm" name="view_user"
+                    onchange="this.form.submit()">
+                <option value="__all__" {% if view_user == '__all__' %}selected{% endif %}>
+                  {{ _('webui.history.all_users') }}
+                </option>
+                <option value="" {% if view_user == '' %}selected{% endif %}>{{ _('webui.history.my_history') }}</option>
+                {% for u in all_users %}
+                <option value="{{ u }}" {% if view_user == u %}selected{% endif %}>
+                        {{ u }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div class="col-auto">
+            <select class="form-select form-select-sm" name="command"
+                    onchange="this.form.submit()">
+                <option value="">{{ _('webui.history.all_commands') }}</option>
+                {% for c in commands %}
+                <option value="{{ c }}"
+                        {% if c== selected_command %}selected{% endif %}>{{ c }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="col-auto">
+            <a class="btn btn-sm btn-outline-secondary"
+               href="/history">{{ _('webui.common.reset') or 'Reset' }}</a>
+        </div>
+    </form>
+</div>
+
+<table class="table table-sm table-hover align-middle">
+    <thead class="table-light">
+    <tr>
+        <th>{{ _('webui.history.when') }}</th>
+        {% if view_user or not view_user and can_view_all %}
+        {# Show "User" column only in admin view mode #}
+        {% endif %}
+        <th>{{ _('webui.history.command') }}</th>
+        <th>{{ _('webui.history.arguments') }}</th>
+        <th>{{ _('webui.history.exit_code') }}</th>
+        <th>{{ _('webui.history.duration') }}</th>
+        <th>{{ _('webui.history.ip') }}</th>
+        {% if can(user, 'history.view.all') %}
+        <th>{{ _('webui.history.user') }}</th>
+        {% endif %}
+        <th></th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for e in entries %}
+    <tr>
+        <td>
+            {% if e.started_at %}
+            <span title="{{ e.started_at.isoformat() }}">
+            {{ e.started_at.strftime('%d.%m %H:%M:%S') }}
+          </span>
+            {% else %}—{% endif %}
+        </td>
+        <td><code>{{ e.command }}</code></td>
+        <td><code>{{ e.args }}</code></td>
+        <td>
+            {% if e.exit_code == 0 %}
+            <span class="badge bg-success">0</span>
+            {% elif e.exit_code is not none %}
+            <span class="badge bg-danger">{{ e.exit_code }}</span>
+            {% else %}
+            <span class="badge bg-secondary">—</span>
+            {% endif %}
+        </td>
+        <td>{{ e.duration_ms or '—' }} ms</td>
+        <td>{{ e.client_ip or '—' }}</td>
+        {% if can(user, 'history.view.all') %}
+        <td>{{ e.user }}</td>
+        {% endif %}
+        <td class="text-end">
+            <a class="btn btn-sm btn-outline-primary"
+               href="/history/{{ e.id }}">{{ _('webui.history.open') }}</a>
+        </td>
+    </tr>
+    {% else %}
+    <tr>
+        <td colspan="7" class="text-center text-muted py-4">
+            {{ _('webui.history.empty') }}
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}

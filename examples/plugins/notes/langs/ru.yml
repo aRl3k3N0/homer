@@ -1,6 +1,0 @@
-notes:
-  errors:
-    title_required: "Укажите --title=<заголовок>"
-  created: "Заметка '{title}' создана"
-  list:
-    title: "Заметки"

@@ -18,5 +18,5 @@ exclude =
     commands,
     examples,
 per-file-ignores =
-    tests/*:E402
-    lib/commands/*:E402
+    src/tests/*:E402
+    src/homer/commands/*:E402

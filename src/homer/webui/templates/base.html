@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="{{ locale }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Homer{% endblock %}</title>
+  <link rel="stylesheet" href="/static/bootstrap.min.css">
+  <style>
+    .stat-card { min-width: 130px; }
+    pre { max-height: 500px; overflow: auto; background: #f8f9fa; padding: 1rem; }
+    .badge-status { font-size: 0.85em; }
+    td.args { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .table-sm td, .table-sm th { vertical-align: middle; }
+
+    /* ─── Language dropdown (self-contained, no Bootstrap JS) ─── */
+    .lang-switch {
+      position: relative;
+      display: inline-block;
+    }
+    .lang-switch > .lang-toggle {
+      background: none;
+      border: none;
+      color: #fff;
+      font-weight: bold;
+      padding: .5rem .75rem;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+    .lang-switch > .lang-toggle:hover,
+    .lang-switch > .lang-toggle:focus {
+      color: #fff;
+      text-decoration: underline;
+      outline: none;
+    }
+    .lang-switch > .lang-toggle::after {
+      content: " ▾";
+      font-size: .8em;
+      opacity: .7;
+    }
+    .lang-switch .lang-menu {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      min-width: 80px;
+      background: #fff;
+      border: 1px solid rgba(0,0,0,.15);
+      border-radius: .25rem;
+      box-shadow: 0 .5rem 1rem rgba(0,0,0,.175);
+      padding: .25rem 0;
+      margin: .125rem 0 0;
+      z-index: 1000;
+      list-style: none;
+    }
+    .lang-switch.open .lang-menu {
+      display: block;
+    }
+    .lang-switch .lang-menu .lang-item {
+      display: block;
+      width: 100%;
+      padding: .25rem 1rem;
+      text-align: left;
+      background: none;
+      border: none;
+      color: #212529;
+      cursor: pointer;
+      font-size: .95rem;
+      line-height: 1.5;
+    }
+    .lang-switch .lang-menu .lang-item:hover,
+    .lang-switch .lang-menu .lang-item:focus {
+      background: #0d6efd;
+      color: #fff;
+      outline: none;
+    }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="/">⚙️ Homer</a>
+
+    <div class="navbar-nav ms-auto">
+      <a class="nav-link" href="/">{{ _('webui.nav.jobs') }}</a>
+      <a class="nav-link" href="/logs">{{ _('webui.nav.logs') }}</a>
+        {% if can(user, 'history.view') %}
+      <a class="nav-link" href="/history">{{ _('webui.nav.history') }}</a>
+        {% endif %}
+        {% if can(user, 'console.use') %}
+      <a class="nav-link" href="/console">{{ _('webui.nav.console') }}</a>
+        {% endif %}
+{% if can(user, 'editor.view') %}
+  <div class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+      {{ _('webui.nav.editor') or 'Editor' }}
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end">
+      {% if can(user, 'editor.config') %}
+        <li><a class="dropdown-item" href="/editor/config">
+          {{ _('webui.editor.config') }}</a></li>
+      {% endif %}
+      {% if can(user, 'editor.commands') %}
+        <li><a class="dropdown-item" href="/editor/files/commands">
+          {{ _('webui.editor.commands') }}</a></li>
+      {% endif %}
+      {% if can(user, 'editor.plugins') %}
+        <li><a class="dropdown-item" href="/editor/files/plugins">
+          {{ _('webui.editor.plugins') }}</a></li>
+      {% endif %}
+      {% if can(user, 'editor.langs') %}
+        <li><a class="dropdown-item" href="/editor/langs">
+          {{ _('webui.editor.langs') }}</a></li>
+      {% endif %}
+      {% if can(user, 'editor.templates') %}
+        <li><a class="dropdown-item" href="/editor/files/templates">
+          {{ _('webui.editor.templates') }}</a></li>
+      {% endif %}
+      {% if can(user, 'editor.static') %}
+        <li><a class="dropdown-item" href="/editor/files/static">
+          {{ _('webui.editor.static') }}</a></li>
+      {% endif %}
+    </ul>
+  </div>
+{% endif %}
+      {% if can(user, 'users.manage') %}
+        <div class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button"
+             data-bs-toggle="dropdown" aria-expanded="false">
+            {{ _('webui.nav.admin') }}
+          </a>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="/admin/users">{{ _('webui.nav.users') }}</a></li>
+            {% if can(user, 'roles.manage') %}
+              <li><a class="dropdown-item" href="/admin/roles">{{ _('webui.nav.roles') }}</a></li>
+            {% endif %}
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="/logout">
+              {{ _('webui.nav.logout') }} ({{ user.username }})
+            </a></li>
+          </ul>
+        </div>
+      {% elif user %}
+        <a class="nav-link" href="/logout">
+          {{ _('webui.nav.logout') }} ({{ user.username }})
+        </a>
+      {% else %}
+        <a class="nav-link" href="/login">{{ _('webui.nav.login') }}</a>
+      {% endif %}
+
+{% for item in extension_menu('main') %}
+  {% if not item.perm or can(user, item.perm) %}
+    <a class="nav-link" href="{{ item.url }}"
+       {% if item.new_tab %}target="_blank"{% endif %}>
+      {% if item.icon %}<span class="me-1">{{ item.icon|safe }}</span>{% endif %}
+      {{ _(item.label_key) }}
+    </a>
+  {% endif %}
+{% endfor %}
+
+      <a class="nav-link" href="/docs" target="_blank" rel="noopener">
+        {{ _('webui.nav.api') }}
+      </a>
+{% if user %}
+  <div class="nav-item dropdown">
+    <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">
+      {{ user.username }}
+    </a>
+    <ul class="dropdown-menu dropdown-menu-end">
+      <li><a class="dropdown-item" href="/profile">{{ _('webui.nav.profile') }}</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li><a class="dropdown-item" href="/logout">{{ _('webui.nav.logout') }}</a></li>
+    </ul>
+  </div>
+{% else %}
+  <a class="nav-link" href="/login">{{ _('webui.nav.login') }}</a>
+{% endif %}
+        </ul>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<main class="container-fluid">
+  {% block content %}{% endblock %}
+</main>
+
+<script src="/static/jquery-4.0.0.min.js"></script>
+<script src="/static/htmx.min.js"></script>
+<script src="/static/popper.min.js"></script>
+<script src="/static/bootstrap.min.js"></script>
+<script src="/static/homer-ws.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ─────────── Language switcher (custom, no Bootstrap JS) ───────────
+
+  const COOKIE_NAME = "homer_locale";
+  const COOKIE_MAX_AGE = 365 * 24 * 3600;
+
+  function setCookie(name, value, maxAge) {
+    document.cookie =
+      name + "=" + encodeURIComponent(value) +
+      "; max-age=" + maxAge +
+      "; path=/; samesite=lax";
+  }
+
+  const switcher = document.getElementById("lang-switch");
+  if (switcher) {
+    const toggle = switcher.querySelector(".lang-toggle");
+    const menu = switcher.querySelector(".lang-menu");
+
+    function openMenu() {
+      switcher.classList.add("open");
+      if (toggle) toggle.setAttribute("aria-expanded", "true");
+    }
+
+    function closeMenu() {
+      switcher.classList.remove("open");
+      if (toggle) toggle.setAttribute("aria-expanded", "false");
+    }
+
+    function isOpen() {
+      return switcher.classList.contains("open");
+    }
+
+    // Toggle on click
+    toggle.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      if (isOpen()) closeMenu();
+      else openMenu();
+    });
+
+    // Prevent clicks inside the menu from closing it prematurely
+    menu.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+    });
+
+    // Close when clicking anywhere else
+    document.addEventListener("click", function () {
+      if (isOpen()) closeMenu();
+    });
+
+    // Close on Escape
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && isOpen()) closeMenu();
+    });
+
+    // Language item clicks
+        // Language item clicks
+    switcher.querySelectorAll(".lang-item").forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        const target = btn.getAttribute("data-lang");
+        if (!target) return;
+
+        const current = document.documentElement.getAttribute("lang");
+        if (target === current) {
+          closeMenu();
+          return;
+        }
+
+        // Navigate with ?lang=... — the middleware will apply the
+        // locale on this request and set the cookie in the response.
+        const url = new URL(window.location.href);
+        url.searchParams.set("lang", target);
+        window.location.href = url.toString();
+      });
+    });
+  }
+})();
+</script>
+
+</body>
+</html>

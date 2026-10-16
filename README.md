@@ -28,6 +28,10 @@ git clone https://github.com/<user>/homer.git && cd homer
 make install-dev
 chmod +x homer
 
+python -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -e .
+
 ./homer
 ./homer make:command --name=hello
 ./homer hello --name=Иван

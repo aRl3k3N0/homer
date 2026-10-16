@@ -1,0 +1,307 @@
+{% extends "base.html" %}
+{% block title %}{{ _('webui.console.title') }} — Homer{% endblock %}
+{% block content %}
+
+<div class="row mb-3">
+  <div class="col-md-5">
+    <label class="form-label">{{ _('webui.console.command') }}</label>
+
+    {# Search box + select #}
+    <input type="text" id="cmd-search" class="form-control mb-1"
+           placeholder="{{ _('webui.console.search_placeholder') }}"
+           autocomplete="off">
+
+    <select class="form-select" id="cmd-select" size="8">
+      {% for name, meta in commands.items() %}
+        <option value="{{ name }}"
+                data-description="{{ meta.description }}"
+                data-usage="{{ meta.usage }}"
+                data-params='{{ meta.params | tojson }}'
+                data-examples='{{ meta.examples | tojson }}'
+                data-source="{{ meta.source }}">
+          {{ name }}{% if meta.source == 'builtin' %} *{% endif %}
+        </option>
+      {% endfor %}
+    </select>
+
+    <div class="form-text">
+      {{ _('webui.console.legend') }}: <code>*</code> — {{ _('webui.console.builtin') }}
+    </div>
+  </div>
+
+  <div class="col-md-7">
+    {# Description and help panel #}
+    <div id="cmd-info" class="border rounded p-3 h-100"
+         style="background:#f8f9fa;min-height:220px;">
+      <div class="text-muted">{{ _('webui.console.select_hint') }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row mb-2">
+  <div class="col-12">
+    <label class="form-label">{{ _('webui.console.arguments') }}</label>
+    <input type="text" class="form-control" id="cmd-args"
+           placeholder="--name=Alice --shout">
+  </div>
+</div>
+
+<div class="d-flex justify-content-between mb-2">
+  <div class="text-muted small" id="cmd-status">{{ _('webui.console.ready') }}</div>
+  <div>
+    <button class="btn btn-sm btn-outline-danger" id="cmd-stop" disabled>
+      {{ _('webui.console.stop') }}
+    </button>
+    <button class="btn btn-sm btn-outline-secondary" id="cmd-clear">
+      {{ _('webui.console.clear') }}
+    </button>
+  </div>
+</div>
+
+<pre id="console-output"
+     style="background:#1e1e1e;color:#d4d4d4;padding:1rem;height:45vh;
+            overflow:auto;font-family:Menlo,Consolas,monospace;
+            font-size:0.85em;border-radius:6px;white-space:pre-wrap;"></pre>
+
+<div id="input-area" class="mt-2 d-none">
+  <div class="input-group">
+    <span class="input-group-text" id="input-prompt">?</span>
+    <input type="text" class="form-control" id="input-value" autocomplete="off">
+    <button class="btn btn-success" id="input-send">
+      {{ _('webui.console.send') }}
+    </button>
+  </div>
+</div>
+
+<style>
+  .con-out  { color: #d4d4d4; }
+  .con-err  { color: #f48771; }
+  .con-sys  { color: #569cd6; }
+  .con-ok   { color: #4ec9b0; }
+  .con-cmd  { color: #dcdcaa; }
+  .param-key  { color: #8b0000; font-weight: 600; }
+  .param-desc { color: #555; }
+  .info-usage { font-family: Menlo,Consolas,monospace;
+                background: #fff; padding: .35rem .5rem;
+                border-radius: 4px; display: inline-block; }
+  .info-example { font-family: Menlo,Consolas,monospace;
+                  background: #fff; padding: .25rem .5rem;
+                  border-radius: 4px; margin-bottom: .25rem; }
+</style>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const out = $('console-output');
+  const status = $('cmd-status');
+  const inputArea = $('input-area');
+  const inputEl = $('input-value');
+  const inputPrompt = $('input-prompt');
+  const searchInput = $('cmd-search');
+  const select = $('cmd-select');
+  const info = $('cmd-info');
+
+  let ws = null;
+  let currentInputId = null;
+
+  // ─────────── Search filter ───────────
+
+  function filterOptions() {
+    const q = searchInput.value.trim().toLowerCase();
+    let visible = 0;
+    for (const opt of select.options) {
+      const name = opt.value.toLowerCase();
+      const desc = (opt.dataset.description || '').toLowerCase();
+      const match = !q || name.includes(q) || desc.includes(q);
+      opt.hidden = !match;
+      opt.style.display = match ? '' : 'none';
+      if (match) visible++;
+    }
+    // If currently selected is hidden, select first visible
+    if (select.selectedOptions.length === 0 ||
+        select.selectedOptions[0].hidden) {
+      for (const opt of select.options) {
+        if (!opt.hidden) { select.value = opt.value; break; }
+      }
+    }
+    renderInfo();
+  }
+
+  // ─────────── Info panel ───────────
+
+  function renderInfo() {
+    const opt = select.selectedOptions[0];
+    if (!opt) {
+      info.innerHTML = '<div class="text-muted">—</div>';
+      return;
+    }
+    const desc = opt.dataset.description || '';
+    const usage = opt.dataset.usage || '';
+    let params = {};
+    let examples = [];
+    try { params = JSON.parse(opt.dataset.params || '{}'); } catch {}
+    try { examples = JSON.parse(opt.dataset.examples || '[]'); } catch {}
+
+    let html = '';
+    html += `<h5>${escapeHtml(opt.value)}</h5>`;
+    if (desc) {
+      html += `<p class="mb-2">${escapeHtml(desc)}</p>`;
+    }
+    if (usage) {
+      html += `<div class="mb-2"><b>Usage:</b><br>`;
+      html += `<span class="info-usage">${escapeHtml(usage)}</span></div>`;
+    }
+    const paramKeys = Object.keys(params);
+    if (paramKeys.length) {
+      html += `<div class="mb-2"><b>Parameters:</b><ul class="mb-1">`;
+      for (const k of paramKeys) {
+        html += `<li><span class="param-key">--${escapeHtml(k)}</span> — ` +
+                `<span class="param-desc">${escapeHtml(params[k] || '')}</span></li>`;
+      }
+      html += `</ul></div>`;
+    }
+    if (examples.length) {
+      html += `<div class="mb-2"><b>Examples:</b><br>`;
+      for (const ex of examples) {
+        html += `<div class="info-example">${escapeHtml(ex)}</div>`;
+      }
+      html += `</div>`;
+    }
+    if (!desc && !usage && !paramKeys.length && !examples.length) {
+      html += `<div class="text-muted">No description available.</div>`;
+    }
+    info.innerHTML = html;
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+  }
+
+  // ─────────── Console WS (unchanged) ───────────
+
+  function esc(s) {
+    return String(s)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+  }
+
+  function append(text, cls = 'con-out') {
+    out.insertAdjacentHTML('beforeend', `<span class="${cls}">${esc(text)}</span>`);
+    out.scrollTop = out.scrollHeight;
+  }
+
+  function parseArgs(str) {
+    const args = {};
+    if (!str) return args;
+    const re = /--([\w\-]+)(?:=("[^"]*"|'[^']*'|\S+))?/g;
+    let m;
+    while ((m = re.exec(str)) !== null) {
+      const key = m[1];
+      let val = m[2];
+      if (val === undefined) val = true;
+      else val = val.replace(/^['"]|['"]$/g, '');
+      args[key] = val;
+    }
+    return args;
+  }
+
+  function wsUrl() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${proto}//${location.host}/ws/console${location.search}`;
+  }
+
+  function connect() {
+    ws = new WebSocket(wsUrl());
+
+    ws.onopen = () => {
+      const command = select.value;
+      const args = parseArgs($('cmd-args').value);
+      ws.send(JSON.stringify({command, args}));
+      status.textContent = `Running: ${command}`;
+      $('cmd-stop').disabled = false;
+    };
+
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+
+      if (msg.type === 'started') {
+        append(`$ homer ${msg.command} `, 'con-cmd');
+        if (Object.keys(msg.args).length) {
+          append(Object.entries(msg.args).map(([k, v]) => `--${k}=${v}`).join(' '), 'con-cmd');
+        }
+        append('\n', 'con-cmd');
+      } else if (msg.type === 'output') {
+        append(msg.data, msg.stream === 'stderr' ? 'con-err' : 'con-out');
+      } else if (msg.type === 'input_request') {
+        currentInputId = msg.id;
+        inputPrompt.textContent = msg.prompt || '?';
+        inputArea.classList.remove('d-none');
+        inputEl.value = '';
+        inputEl.focus();
+        append(msg.prompt, 'con-sys');
+      } else if (msg.type === 'error') {
+        append(`[error] ${msg.message}\n`, 'con-err');
+      } else if (msg.type === 'done') {
+        append(`\n[exit code: ${msg.exit_code}]\n`,
+               msg.exit_code === 0 ? 'con-ok' : 'con-err');
+        status.textContent = `Finished (exit=${msg.exit_code})`;
+        $('cmd-stop').disabled = true;
+        ws.close();
+      }
+    };
+
+    ws.onclose = () => {
+      status.textContent = 'Connection closed';
+      $('cmd-stop').disabled = true;
+    };
+
+    ws.onerror = (e) => append(`[ws error] ${e}\n`, 'con-err');
+  }
+
+  function sendInput() {
+    if (!currentInputId) return;
+    const v = inputEl.value;
+    ws.send(JSON.stringify({type: 'input_response', id: currentInputId, value: v}));
+    append(v + '\n', 'con-sys');
+    inputArea.classList.add('d-none');
+    currentInputId = null;
+  }
+
+  // ─────────── Wiring ───────────
+
+  $('cmd-run') ? null : null;
+
+  // Add a "Run" button dynamically if not in markup
+  // (in this template the Run button is implicit — trigger by Enter)
+  $('cmd-args').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (ws) { try { ws.close(); } catch {} }
+      out.innerHTML = '';
+      connect();
+    }
+  });
+
+  $('cmd-stop').onclick = () => {
+    if (ws) ws.send(JSON.stringify({type: 'signal', signal: 'SIGINT'}));
+  };
+
+  $('cmd-clear').onclick = () => { out.innerHTML = ''; };
+  $('input-send').onclick = sendInput;
+  inputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendInput(); });
+
+  searchInput.addEventListener('input', filterOptions);
+  select.addEventListener('change', renderInfo);
+
+  filterOptions();
+  renderInfo();
+})();
+</script>
+
+{% endblock %}

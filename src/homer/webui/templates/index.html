@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Очередь — Homer{% endblock %}
+{% block content %}
+
+<div id="stats-container" class="mb-3"></div>
+
+<form id="jobs-filter" class="row g-2 mb-3" onsubmit="return false;">
+  <div class="col-auto">
+    <input type="text" class="form-control" name="q"
+           placeholder="Поиск по команде или аргументам">
+  </div>
+  <div class="col-auto">
+    <select class="form-select" name="status">
+      <option value="">Все статусы</option>
+      {% for s in statuses %}
+      <option value="{{ s }}">{{ s }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-auto">
+    <a href="/" class="btn btn-outline-secondary">Сброс</a>
+  </div>
+  <div class="col-auto ms-auto">
+    <span id="ws-status" class="text-muted small">…</span>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-sm table-hover align-middle" id="jobs-table">
+    <thead class="table-light">
+      <tr>
+        <th>ID</th><th>Команда</th><th>Аргументы</th><th>Приоритет</th>
+        <th>Статус</th><th>Try</th><th>Создана</th><th>Запущена</th>
+        <th>Завершена</th><th>Источник</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td colspan="11" class="text-center text-muted py-4">Загрузка…</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script src="/static/homer-ws.js" defer></script>
+{% endblock %}

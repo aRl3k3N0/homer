@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}{{ file_path }} — Editor{% endblock %}
+{% block content %}
+
+<link rel="stylesheet" href="/static/codemirror.min.css">
+<script src="/static/codemirror.min.js"></script>
+<script src="/static/cm-mode-yaml.min.js"></script>
+<script src="/static/cm-mode-python.min.js"></script>
+<script src="/static/cm-mode-javascript.min.js"></script>
+<script src="/static/cm-mode-htmlmixed.min.js"></script>
+<script src="/static/cm-mode-jinja2.min.js"></script>
+<script src="/static/cm-mode-markdown.min.js"></script>
+<script src="/static/cm-mode-xml.min.js"></script>
+<script src="/static/cm-addon-closebrackets.min.js"></script>
+<script src="/static/cm-addon-matchbrackets.min.js"></script>
+
+<div class="d-flex align-items-center mb-2 gap-2">
+  <a href="/editor/files/{{ category }}" class="btn btn-sm btn-outline-secondary">←</a>
+  <code class="text-muted small">{{ category }}/{{ file_path }}</code>
+  <button class="btn btn-sm btn-primary ms-auto" id="btn-save">Save</button>
+  <button class="btn btn-sm btn-outline-secondary" id="btn-reload">Reload</button>
+  <button class="btn btn-sm btn-outline-danger" id="btn-delete">Delete</button>
+  <span id="status" class="text-muted small"></span>
+</div>
+
+<textarea id="editor"></textarea>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const category = {{ category | tojson }};
+  const filePath = {{ file_path | tojson }};
+
+  let checksum = null;
+  let lockToken = null;
+  const resource = `file:${category}:${filePath}`;
+
+  const extMap = {
+    py: 'python', yml: 'yaml', yaml: 'yaml',
+    js: 'javascript', html: 'jinja2', htm: 'jinja2',
+    md: 'markdown', xml: 'xml', json: {name: 'javascript', json: true},
+    sql: 'sql', txt: 'text/plain',
+  };
+  const ext = filePath.split('.').pop().toLowerCase();
+  const mode = extMap[ext] || 'text/plain';
+
+  const cm = CodeMirror.fromTextArea($('editor'), {
+    lineNumbers: true,
+    mode: mode,
+    theme: 'default',
+    indentUnit: 4,
+    tabSize: 4,
+    indentWithTabs: false,
+    autoCloseBrackets: true,
+    matchBrackets: true,
+    lineWrapping: false,
+    extraKeys: {
+      'Ctrl-S': () => save(),
+      'Cmd-S': () => save(),
+    },
+  });
+
+  let validateTimer = null;
+  cm.on('change', () => {
+    clearTimeout(validateTimer);
+    validateTimer = setTimeout(validate, 600);
+  });
+
+  async function validate() {
+    const r = await fetch('/api/editor/validate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({category, path: filePath, content: cm.getValue()}),
+    });
+    if (!r.ok) return;
+    const data = await r.json();
+    cm.clearGutter('cm-error-gutter');
+    for (const err of data.errors || []) {
+      if (!err.line) continue;
+      const el = document.createElement('div');
+      el.className = 'cm-error-marker';
+      el.textContent = '✖';
+      el.title = err.message;
+      cm.setGutterMarker(err.line - 1, 'cm-error-gutter', el);
+    }
+  }
+
+  async function acquireLock() {
+    try {
+      const r = await fetch('/api/editor/lock', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({resource, ttl: 300}),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        lockToken = data.token;
+        $('status').textContent = 'Locked';
+      }
+    } catch (e) {}
+  }
+
+  function startLockRefresh() {
+    setInterval(async () => {
+      if (!lockToken) return;
+      try {
+        await fetch('/api/editor/lock/refresh', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({resource, token: lockToken, ttl: 300}),
+        });
+      } catch (e) {}
+    }, 60000);
+  }
+
+  async function releaseLock() {
+    if (!lockToken) return;
+    try {
+      await fetch('/api/editor/lock/release', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({resource, token: lockToken}),
+      });
+    } catch (e) {}
+  }
+
+  async function load() {
+    const r = await fetch(`/api/editor/file/${category}?path=${encodeURIComponent(filePath)}`);
+    if (!r.ok) {
+      $('status').textContent = `Error: ${await r.text()}`;
+      return;
+    }
+    const data = await r.json();
+    cm.setValue(data.content);
+    checksum = data.checksum;
+    $('status').textContent = `Loaded (${data.size} B)`;
+  }
+
+  async function save() {
+    const content = cm.getValue();
+    const r = await fetch(`/api/editor/file/${category}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        path: filePath,
+        content,
+        expected_checksum: checksum,
+      }),
+    });
+    if (!r.ok) {
+      $('status').textContent = `Error: ${await r.text()}`;
+      return;
+    }
+    const data = await r.json();
+    checksum = data.checksum;
+    $('status').textContent = 'Saved';
+  }
+
+  async function deleteFile() {
+    if (!confirm('Delete this file?')) return;
+    const r = await fetch(`/api/editor/file/${category}`, {
+      method: 'DELETE',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path: filePath}),
+    });
+    if (!r.ok) {
+      $('status').textContent = `Error: ${await r.text()}`;
+      return;
+    }
+    window.location.href = `/editor/files/${category}`;
+  }
+
+  $('btn-save').addEventListener('click', save);
+  $('btn-reload').addEventListener('click', load);
+  $('btn-delete').addEventListener('click', deleteFile);
+
+  window.addEventListener('beforeunload', releaseLock);
+
+  (async () => {
+    await acquireLock();
+    startLockRefresh();
+    await load();
+  })();
+})();
+</script>
+
+<style>
+  .CodeMirror { height: 70vh; font-size: 13px; border: 1px solid #ddd; }
+  .CodeMirror-gutter.cm-error-gutter { width: 16px; }
+  .cm-error-marker { color: #dc3545; cursor: help; font-weight: bold; }
+</style>
+
+{% endblock %}
