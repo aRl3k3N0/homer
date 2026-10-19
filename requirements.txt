@@ -1,5 +1,5 @@
 # Основные зависимости Homer
-PyYAML>=6.0
+PyYAML>=6.0.3
 psycopg2-binary>=2.9.13
 Jinja2>=3.0.0
 requests>=2.34.2
