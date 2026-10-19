@@ -16,7 +16,7 @@ pymongo>=4.18.2            # MongoDB
 # Web UI + Swagger
 fastapi>=0.110
 uvicorn[standard]>=0.54.0
-pydantic>=2.6
+pydantic>=2.14.1
 
 # Tracing
 opentelemetry-api>=1.25
