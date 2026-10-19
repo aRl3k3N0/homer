@@ -36,7 +36,7 @@ homer = "homer.cli:main"
 oracle = ["cx_Oracle>=8.3.0"]
 postgres = ["psycopg2-binary>=2.9.13"]
 mysql = ["PyMySQL>=1.1.0"]
-mssql = ["pyodbc>=4.0.0", "pymssql>=2.3.0"]
+mssql = ["pyodbc>=4.0.0", "pymssql>=2.4.4"]
 clickhouse = ["clickhouse-driver>=0.2.6", "clickhouse-connect>=0.7.0"]
 redis = ["redis>=5.0"]
 mongo = ["pymongo>=4.10"]
@@ -45,7 +45,7 @@ database = [
     "psycopg2-binary>=2.9.13",
     "PyMySQL>=1.1.0",
     "pyodbc>=4.0.0",
-    "pymssql>=2.3.0",
+    "pymssql>=2.4.4",
     "clickhouse-driver>=0.2.6",
     "clickhouse-connect>=0.7.0",
     "redis>=5.0",
