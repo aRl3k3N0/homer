@@ -34,7 +34,7 @@ cryptography>=41.0
 
 #опционально:
 babel>=2.14 ; python_version < "4.0"
-ldap3>=2.9              # для LDAP/AD
+ldap3>=2.9.1              # для LDAP/AD
 pyspnego>=0.10          # для Kerberos GSSAPI
 python-multipart>=0.0.9 # для form-login (FastAPI)
 ruamel.yaml>=0.18
