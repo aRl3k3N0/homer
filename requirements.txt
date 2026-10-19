@@ -21,7 +21,7 @@ pydantic>=2.6
 # Tracing
 opentelemetry-api>=1.25
 opentelemetry-sdk>=1.25
-opentelemetry-exporter-otlp>=1.25
+opentelemetry-exporter-otlp>=1.45.1
 # или для Jaeger:
 # opentelemetry-exporter-jaeger>=1.21
 
